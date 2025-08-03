@@ -2,23 +2,23 @@
 
 from telebot import TeleBot
 from config import TOKEN, ADMIN_ID
-from client_handlers import register_client_handlers
 from admin_handlers import register_admin_handlers
 from utils import schedule_expiration_check
 from storage import ensure_storage
 
+# Inicializar el bot con el token y modo HTML
 bot = TeleBot(TOKEN, parse_mode='HTML')
 
-# Asegurar que existan los archivos de almacenamiento
+# Asegurar que los archivos de almacenamiento existan
 ensure_storage()
 
-# Registrar handlers
-register_client_handlers(bot)
+# Registrar los comandos del administrador
 register_admin_handlers(bot)
 
-# Iniciar verificación programada de expiraciones
+# Programar revisiones automáticas de vencimientos
 schedule_expiration_check(bot)
 
 print("✅ Bot de WireGuard iniciado correctamente.")
 
+# Iniciar el bot en modo polling continuo
 bot.infinity_polling()

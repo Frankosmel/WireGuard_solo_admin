@@ -7,7 +7,10 @@ TOKEN = "TU_TOKEN_AQUI"
 ADMIN_ID = 1383931339  # Cambia este ID si es necesario
 
 # Dirección IP pública del servidor con WireGuard
-SERVER_PUBLIC_IP = "123.123.123.123"  # Reemplaza con la IP real
+SERVER_PUBLIC_IP = "3.145.41.118"  # IP real de tu VPS
+
+# Clave pública del servidor (añadido para generar .conf correctos)
+SERVER_PUBLIC_KEY = "y4ARH46FTZWyvD8zi1lU0Wo8WZKig2vH0zU53io3qyE"
 
 # Puerto de escucha de WireGuard
 LISTEN_PORT = 51820

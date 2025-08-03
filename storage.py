@@ -34,4 +34,15 @@ def save_json(name, data):
     """
     Guarda un diccionario en el archivo JSON correspondiente.
     """
-    path
+    path = FILES.get(name)
+    if not path:
+        raise ValueError(f"Archivo desconocido: {name}")
+    with open(path, "w") as f:
+        json.dump(data, f, indent=4)
+
+# Alias específicos usados por admin_handlers
+def load_users():
+    return load_json("users")
+
+def save_users(data):
+    save_json("users", data)

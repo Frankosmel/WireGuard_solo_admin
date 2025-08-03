@@ -1,48 +1,49 @@
 # config.py
 
-# Token del bot (reemplaza con tu token real)
+# Token del bot (reemplázalo con tu token real)
 TOKEN = "TU_TOKEN_AQUI"
 
-# ID del administrador autorizado
-ADMIN_ID = 1383931339  # Cambia este ID si es necesario
+# ID del administrador autorizado (solo este accede al bot)
+ADMIN_ID = 1383931339  # Reemplaza por tu ID si cambia
 
-# Dirección IP pública del servidor con WireGuard
-SERVER_PUBLIC_IP = "3.145.41.118"  # IP real de tu VPS
+# IP pública del servidor WireGuard (donde corre el bot y WG)
+SERVER_PUBLIC_IP = "3.145.41.118"  # IP de tu VPS
 
-# Clave pública del servidor (añadido para generar .conf correctos)
+# Clave pública del servidor WireGuard (para crear .conf)
 SERVER_PUBLIC_KEY = "y4ARH46FTZWyvD8zi1lU0Wo8WZKig2vH0zU53io3qyE"
 
-# Puerto de escucha de WireGuard
+# Puerto de escucha del servidor WireGuard (por defecto 51820)
 LISTEN_PORT = 51820
 
-# Carpeta donde se guardarán los archivos .conf
+# Carpeta donde se almacenan los archivos .conf generados
 WG_CONFIG_DIR = "configs"
 
-# Archivo JSON con la información de los clientes
+# Archivo JSON con las configuraciones de clientes registradas
 CLIENTES_FILE = "clientes.json"
 
-# Intervalo de revisión de vencimientos en segundos
+# Intervalo de revisión de vencimientos (en segundos)
 REVISIÓN_INTERVALO_SEGUNDOS = 3600  # cada 1 hora
 
-# Horas antes del vencimiento para enviar notificaciones
-AVISOS_VENCIMIENTO_HORAS = [72, 24, 0]  # 3 días, 1 día, el mismo día
+# Horas antes del vencimiento para enviar recordatorios automáticos
+AVISOS_VENCIMIENTO_HORAS = [72, 24, 0]  # 3 días, 1 día, día final
 
-# Nombres visibles de los planes (no se muestran precios al usuario)
+# Planes disponibles (nombres mostrados en botones del bot)
 PLANES = [
     "Free (5 horas)",
     "15 días",
     "30 días"
 ]
 
-# Precios internos por método de pago (no mostrados al usuario)
+# Definición de duración y precio interno de cada plan
+# (Los precios no se muestran en el bot ya que el administrador gestiona todo)
 PLANES_PRECIOS = {
     "Free (5 horas)": {"horas": 5, "precio_cup": 0, "precio_saldo": 0},
     "15 días": {"dias": 15, "precio_cup": 500, "precio_saldo": 250},
     "30 días": {"dias": 30, "precio_cup": 750, "precio_saldo": 375}
 }
 
-# Métodos de pago disponibles (seleccionables por botón)
+# Métodos de pago disponibles (no usados ahora, pero listos para futuro)
 METODOS_PAGO = ["CUP", "Saldo Móvil"]
 
-# Grupo o canal de log (opcional, dejar en None si no se usa)
+# Grupo o canal para recibir logs de actividad (puedes activarlo luego)
 GRUPO_LOGS = None

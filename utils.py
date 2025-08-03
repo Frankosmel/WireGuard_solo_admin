@@ -16,7 +16,7 @@ from config import (
     AVISOS_VENCIMIENTO_HORAS,
     REVISIÓN_INTERVALO_SEGUNDOS,
     ADMIN_ID,
-    SERVER_PUBLIC_KEY,  # ✅ Agregado para no pasarlo manualmente
+    SERVER_PUBLIC_KEY,
 )
 
 from storage import load_json, save_json
@@ -99,7 +99,15 @@ def schedule_expiration_check(bot):
                 if not venc:
                     continue
 
-                vencimiento = datetime.strptime(venc, "%Y-%m-%d %H:%M:%S")
+                # 🛠 Intentar varios formatos válidos de fecha
+                try:
+                    vencimiento = datetime.strptime(venc, "%Y-%m-%d %H:%M:%S")
+                except ValueError:
+                    try:
+                        vencimiento = datetime.strptime(venc, "%Y-%m-%d")
+                    except ValueError:
+                        continue  # Formato inválido
+
                 horas_restantes = (vencimiento - now).total_seconds() / 3600
 
                 for aviso in AVISOS_VENCIMIENTO_HORAS:

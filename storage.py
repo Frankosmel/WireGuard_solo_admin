@@ -3,16 +3,16 @@
 import os
 import json
 
-# Definiciones de archivos de almacenamiento
+# Definición de rutas de archivos de almacenamiento
 FILES = {
-    "users": "data/users.json",
-    "configs": "data/configs.json",
+    "users": "data/users.json",       # Datos de clientes registrados
+    "configs": "data/configs.json",   # Configuraciones WireGuard activas
 }
 
 def ensure_storage():
     """
-    Crea los archivos y directorio `data/` si no existen.
-    Inicializa cada archivo como un diccionario vacío si está ausente.
+    Asegura que el directorio 'data/' y los archivos JSON existan.
+    Si no existen, los crea vacíos como diccionarios.
     """
     os.makedirs("data", exist_ok=True)
     for path in FILES.values():
@@ -22,7 +22,8 @@ def ensure_storage():
 
 def load_json(name):
     """
-    Carga un archivo JSON por su nombre lógico (clave de FILES).
+    Carga un archivo JSON según su clave lógica en FILES.
+    Retorna un diccionario con los datos.
     """
     path = FILES.get(name)
     if not path:
@@ -32,7 +33,7 @@ def load_json(name):
 
 def save_json(name, data):
     """
-    Guarda un diccionario en el archivo JSON correspondiente.
+    Guarda un diccionario en el archivo JSON correspondiente a la clave.
     """
     path = FILES.get(name)
     if not path:
@@ -40,9 +41,15 @@ def save_json(name, data):
     with open(path, "w") as f:
         json.dump(data, f, indent=4)
 
-# Alias específicos usados por admin_handlers
+# Alias específicos usados por otros módulos
 def load_users():
     return load_json("users")
 
 def save_users(data):
     save_json("users", data)
+
+def load_configs():
+    return load_json("configs")
+
+def save_configs(data):
+    save_json("configs", data)

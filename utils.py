@@ -133,3 +133,28 @@ def schedule_expiration_check(bot):
             sleep(REVISIÓN_INTERVALO_SEGUNDOS)
 
     Thread(target=check_loop, daemon=True).start()
+
+# 🧠 Función principal que une todo y genera configuración final
+def generate_wg_config(name, expiration_date):
+    users = load_json("users")
+
+    if name in users:
+        raise ValueError("Este nombre ya está registrado. Usa uno diferente.")
+
+    ip = get_next_available_ip()
+    if not ip:
+        raise RuntimeError("No hay IPs disponibles.")
+
+    private_key, public_key = generate_keypair()
+    config_path = generate_conf(name, private_key, ip)
+
+    users[name] = {
+        "nombre": name,
+        "ip": ip,
+        "clave_publica": public_key,
+        "vencimiento": expiration_date,
+        "expirado": False
+    }
+
+    save_json("users", users)
+    return config_path

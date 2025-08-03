@@ -6,20 +6,20 @@ from config import ADMIN_ID, PLANES, PLANES_PRECIOS, SERVER_PUBLIC_IP
 from storage import load_users, save_users
 from utils import generate_keypair, get_next_available_ip, generate_conf, generate_qr_code, delete_conf
 from datetime import datetime, timedelta
-import os  # Necesario para validar existencia de archivo
+import os
 
-# Diccionario temporal para almacenar pasos del flujo de configuración
+# Diccionario temporal para controlar los pasos del flujo
 ADMIN_FLOW = {}
 
-# Función para verificar si el usuario es el administrador
+# Verifica si el usuario es el administrador
 def is_admin(user_id):
     return user_id == ADMIN_ID
 
-# Registro de handlers para el administrador
+# Registro de todos los handlers del administrador
 def register_admin_handlers(bot: TeleBot):
 
     @bot.message_handler(commands=['admin'])
-    def handle_admin(message):
+    def handle_admin_command(message):
         if not is_admin(message.from_user.id):
             return bot.reply_to(message, "⛔️ No tienes permisos para acceder a este panel.")
         show_admin_menu(bot, message.chat.id)
@@ -43,7 +43,7 @@ def register_admin_handlers(bot: TeleBot):
 
         kb = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
         for plan in PLANES:
-            kb.add(KeyboardButton(f"{plan}"))
+            kb.add(KeyboardButton(plan))
         bot.send_message(
             message.chat.id,
             "🕐 Selecciona un *plan de vencimiento* para esta configuración:",
@@ -61,23 +61,21 @@ def register_admin_handlers(bot: TeleBot):
         data = ADMIN_FLOW.pop(message.from_user.id)
         client_name = data['client_name']
 
-        # Generar claves y dirección IP
+        # Generar claves e IP
         private_key, public_key = generate_keypair()
         ip = get_next_available_ip()
         if not ip:
-            return bot.send_message(message.chat.id, "❌ No hay IPs disponibles en este momento. Por favor, revisa la configuración del servidor.")
+            return bot.send_message(message.chat.id, "❌ No hay IPs disponibles en este momento.")
 
-        # Generar archivo de configuración
+        # Crear archivo .conf
         path = generate_conf(client_name, private_key, ip, SERVER_PUBLIC_IP)
 
-        # Validar que el archivo se haya creado correctamente
         if not path or not os.path.exists(path):
-            return bot.send_message(message.chat.id, "⚠️ Error al generar el archivo de configuración. Verifica permisos o rutas del servidor.")
+            return bot.send_message(message.chat.id, "⚠️ Error al generar el archivo. Verifica permisos o rutas.")
 
-        # Generar código QR
         qr_image = generate_qr_code(path)
 
-        # Calcular la fecha de vencimiento
+        # Calcular vencimiento
         if "dias" in PLANES_PRECIOS[plan]:
             vencimiento = datetime.utcnow() + timedelta(days=PLANES_PRECIOS[plan]["dias"])
         elif "horas" in PLANES_PRECIOS[plan]:
@@ -85,7 +83,7 @@ def register_admin_handlers(bot: TeleBot):
         else:
             vencimiento = datetime.utcnow() + timedelta(days=15)
 
-        # Guardar datos en archivo
+        # Guardar en archivo
         users = load_users()
         users[client_name] = {
             "ip": ip,
@@ -95,7 +93,6 @@ def register_admin_handlers(bot: TeleBot):
         }
         save_users(users)
 
-        # Enviar archivo de configuración y QR al administrador
         bot.send_message(
             message.chat.id,
             f"✅ Configuración generada para: <b>{client_name}</b>\n📅 Vence el: <b>{vencimiento.strftime('%Y-%m-%d %H:%M')} UTC</b>",
@@ -106,9 +103,9 @@ def register_admin_handlers(bot: TeleBot):
         try:
             with open(path, "rb") as f:
                 bot.send_document(message.chat.id, f)
-            bot.send_photo(message.chat.id, qr_image, caption="📲 Escanea este código QR para importar la configuración en tu app.")
+            bot.send_photo(message.chat.id, qr_image, caption="📲 Escanea este código QR para importar la configuración.")
         except Exception as e:
-            bot.send_message(message.chat.id, f"⚠️ Error al enviar los archivos:\n<code>{e}</code>", parse_mode="HTML")
+            bot.send_message(message.chat.id, f"⚠️ Error al enviar archivos:\n<code>{e}</code>", parse_mode="HTML")
 
     @bot.message_handler(func=lambda m: is_admin(m.from_user.id) and m.text == "🗑 Eliminar configuración")
     def delete_config_prompt(message):
@@ -127,7 +124,7 @@ def register_admin_handlers(bot: TeleBot):
         client_name = message.text.strip()
         users = load_users()
         if client_name not in users:
-            return bot.reply_to(message, "⚠️ El nombre ingresado no existe en las configuraciones registradas.")
+            return bot.reply_to(message, "⚠️ El nombre ingresado no existe.")
 
         delete_conf(client_name)
         del users[client_name]
@@ -141,18 +138,24 @@ def register_admin_handlers(bot: TeleBot):
         )
         ADMIN_FLOW.pop(message.from_user.id)
 
-# Mostrar menú del administrador con botones visuales
+    @bot.message_handler(func=lambda m: is_admin(m.from_user.id) and m.text == "🔙 Salir")
+    def salir_admin(message):
+        bot.send_message(message.chat.id, "👋 Has salido del panel.", reply_markup=ReplyKeyboardRemove())
+
+    @bot.message_handler(func=lambda m: is_admin(m.from_user.id))
+    def fallback_admin(message):
+        if message.from_user.id not in ADMIN_FLOW:
+            show_admin_menu(bot, message.chat.id)
+
+# Menú visual persistente del administrador
 def show_admin_menu(bot: TeleBot, chat_id: int):
     kb = ReplyKeyboardMarkup(resize_keyboard=True)
     kb.add(KeyboardButton("📦 Crear configuración"))
     kb.add(KeyboardButton("🗑 Eliminar configuración"))
-    # Puedes agregar más botones aquí si deseas:
-    # kb.add(KeyboardButton("📄 Ver configuraciones activas"))
-    # kb.add(KeyboardButton("📊 Estadísticas"))
-    # kb.add(KeyboardButton("🔙 Salir"))
+    kb.add(KeyboardButton("🔙 Salir"))
     bot.send_message(
         chat_id,
-        "🔧 <b>Panel de Administrador</b>\n\nSelecciona una opción para gestionar las configuraciones WireGuard:",
+        "🔧 <b>Panel de Administrador</b>\n\nSelecciona una opción:",
         reply_markup=kb,
         parse_mode="HTML"
-        )
+            )

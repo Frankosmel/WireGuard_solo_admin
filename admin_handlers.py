@@ -71,7 +71,8 @@ def register_admin_handlers(bot: TeleBot):
         if not ip:
             return bot.send_message(message.chat.id, "❌ No hay IPs disponibles actualmente.")
 
-        path = generate_conf(client_name, private_key, ip, SERVER_PUBLIC_IP)
+        # ✅ Corregido: eliminamos parámetro extra no compatible
+        path = generate_conf(client_name, private_key, ip)
         if not path or not os.path.exists(path):
             return bot.send_message(message.chat.id, "⚠️ Error al generar archivo .conf.")
 
@@ -193,4 +194,4 @@ def show_admin_menu(bot: TeleBot, chat_id: int):
         "🔧 <b>Panel de Administrador</b>\n\nSelecciona una opción para gestionar WireGuard:",
         reply_markup=kb,
         parse_mode="HTML"
-        )
+                                   )

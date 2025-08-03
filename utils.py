@@ -7,7 +7,7 @@ import qrcode
 from io import BytesIO
 from threading import Thread
 from time import sleep
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from config import (
     WG_CONFIG_DIR,
@@ -16,18 +16,18 @@ from config import (
     AVISOS_VENCIMIENTO_HORAS,
     REVISIÓN_INTERVALO_SEGUNDOS,
     ADMIN_ID,
-    SERVER_PUBLIC_KEY,
+    SERVER_PUBLIC_KEY
 )
 
 from storage import load_json, save_json
 
-# 🔐 Genera claves privada y pública únicas
+# 🔐 Genera par de claves (privada y pública)
 def generate_keypair():
     private_key = subprocess.check_output("wg genkey", shell=True).decode().strip()
     public_key = subprocess.check_output(f"echo {private_key} | wg pubkey", shell=True).decode().strip()
     return private_key, public_key
 
-# 📋 Devuelve lista de IPs ya asignadas
+# 📋 Obtiene IPs ya asignadas
 def get_used_ips():
     used_ips = set()
     users = load_json("users")
@@ -37,7 +37,7 @@ def get_used_ips():
             used_ips.add(ip)
     return used_ips
 
-# 🔢 Busca la próxima IP disponible en el rango 10.9.0.2 a 10.9.0.254
+# 🔢 Encuentra la próxima IP disponible en el rango 10.9.0.2 - 10.9.0.254
 def get_next_available_ip():
     base = ipaddress.IPv4Address("10.9.0.1")
     used_ips = get_used_ips()
@@ -47,7 +47,7 @@ def get_next_available_ip():
             return candidate
     return None
 
-# 📝 Genera archivo .conf para cliente
+# 📝 Genera archivo .conf de cliente
 def generate_conf(client_name, private_key, ip):
     config = f"""[Interface]
 PrivateKey = {private_key}
@@ -66,7 +66,7 @@ PersistentKeepalive = 25
         f.write(config)
     return path
 
-# 📲 Genera QR desde archivo .conf
+# 📲 Genera código QR desde .conf
 def generate_qr_code(config_path):
     with open(config_path, "r") as f:
         content = f.read()
@@ -79,7 +79,7 @@ def generate_qr_code(config_path):
     bio.seek(0)
     return bio
 
-# 🗑 Elimina archivo .conf del cliente
+# 🗑 Elimina archivo de configuración
 def delete_conf(client_name):
     path = os.path.join(WG_CONFIG_DIR, f"{client_name}.conf")
     if os.path.exists(path):
@@ -87,7 +87,7 @@ def delete_conf(client_name):
         return True
     return False
 
-# ⏰ Hilo que revisa vencimientos y notifica automáticamente
+# ⏳ Verifica vencimientos y notifica automáticamente
 def schedule_expiration_check(bot):
     def check_loop():
         while True:
@@ -99,29 +99,37 @@ def schedule_expiration_check(bot):
                 if not venc:
                     continue
 
-                # 🛠 Intentar varios formatos válidos de fecha
+                # Detecta formato de fecha válido
                 try:
                     vencimiento = datetime.strptime(venc, "%Y-%m-%d %H:%M:%S")
                 except ValueError:
                     try:
                         vencimiento = datetime.strptime(venc, "%Y-%m-%d")
                     except ValueError:
-                        continue  # Formato inválido
+                        continue
 
                 horas_restantes = (vencimiento - now).total_seconds() / 3600
 
+                # Enviar recordatorios automáticos
                 for aviso in AVISOS_VENCIMIENTO_HORAS:
                     if int(horas_restantes) == aviso and not data.get(f"avisado_{aviso}", False):
-                        bot.send_message(
-                            int(user_id),
-                            f"🔔 *Aviso de vencimiento*\nTu configuración expira en *{aviso} horas*.\nRenueva para no perder la conexión.",
-                            parse_mode="Markdown"
-                        )
+                        try:
+                            bot.send_message(
+                                int(user_id),
+                                f"🔔 *Aviso de vencimiento*\nTu configuración expira en *{aviso} horas*.\nRenueva para no perder la conexión.",
+                                parse_mode="Markdown"
+                            )
+                        except:
+                            pass
                         data[f"avisado_{aviso}"] = True
 
+                # Expira configuración si ya venció
                 if horas_restantes <= 0 and not data.get("expirado", False):
                     delete_conf(data["nombre"])
-                    bot.send_message(int(user_id), "❌ Tu configuración ha expirado.")
+                    try:
+                        bot.send_message(int(user_id), "❌ Tu configuración ha expirado.")
+                    except:
+                        pass
                     bot.send_message(
                         ADMIN_ID,
                         f"📛 Expiró la configuración de `{data['nombre']}` (Usuario ID: {user_id})",
@@ -134,16 +142,16 @@ def schedule_expiration_check(bot):
 
     Thread(target=check_loop, daemon=True).start()
 
-# 🧠 Función principal que une todo y genera configuración final
+# 🔧 Genera la configuración completa del cliente
 def generate_wg_config(name, expiration_date):
     users = load_json("users")
 
     if name in users:
-        raise ValueError("Este nombre ya está registrado. Usa uno diferente.")
+        raise ValueError("Este nombre ya está registrado.")
 
     ip = get_next_available_ip()
     if not ip:
-        raise RuntimeError("No hay IPs disponibles.")
+        raise RuntimeError("No hay IPs disponibles en el rango asignado.")
 
     private_key, public_key = generate_keypair()
     config_path = generate_conf(name, private_key, ip)

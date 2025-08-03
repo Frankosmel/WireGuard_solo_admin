@@ -5,8 +5,20 @@ import os
 import ipaddress
 import qrcode
 from io import BytesIO
-from config import WG_CONFIG_DIR, SERVER_PUBLIC_IP, LISTEN_PORT
-from storage import load_users
+from threading import Thread
+from time import sleep
+from datetime import datetime, timedelta
+
+from config import (
+    WG_CONFIG_DIR,
+    SERVER_PUBLIC_IP,
+    LISTEN_PORT,
+    AVISOS_VENCIMIENTO_HORAS,
+    REVISIÓN_INTERVALO_SEGUNDOS,
+    ADMIN_ID,
+)
+
+from storage import load_json, save_json
 
 def generate_keypair():
     """
@@ -21,7 +33,7 @@ def get_used_ips():
     Devuelve una lista de IPs ya asignadas a clientes.
     """
     used_ips = set()
-    users = load_users()
+    users = load_json("users")
     for user_id, data in users.items():
         ip = data.get("ip")
         if ip:
@@ -84,3 +96,36 @@ def delete_conf(client_name):
         os.remove(path)
         return True
     return False
+
+def schedule_expiration_check(bot):
+    """
+    Inicia un hilo que revisa periódicamente los vencimientos de configuraciones.
+    """
+    def check_loop():
+        while True:
+            users = load_json("users")
+            now = datetime.now()
+
+            for user_id, data in users.items():
+                if "vencimiento" not in data:
+                    continue
+
+                vencimiento = datetime.strptime(data["vencimiento"], "%Y-%m-%d %H:%M:%S")
+                horas_restantes = (vencimiento - now).total_seconds() / 3600
+
+                for aviso in AVISOS_VENCIMIENTO_HORAS:
+                    if int(horas_restantes) == aviso and not data.get(f"avisado_{aviso}", False):
+                        msg = f"🔔 *Aviso de vencimiento*\nTu configuración expira en *{aviso} horas*.\nRenueva para no perder la conexión."
+                        bot.send_message(int(user_id), msg, parse_mode="Markdown")
+                        data[f"avisado_{aviso}"] = True
+
+                if horas_restantes <= 0 and not data.get("expirado", False):
+                    delete_conf(data["nombre"])
+                    bot.send_message(int(user_id), "❌ Tu configuración ha expirado.")
+                    bot.send_message(ADMIN_ID, f"📛 Expiró la configuración de `{data['nombre']}` (Usuario ID: {user_id})", parse_mode="Markdown")
+                    data["expirado"] = True
+
+            save_json("users", users)
+            sleep(REVISIÓN_INTERVALO_SEGUNDOS)
+
+    Thread(target=check_loop, daemon=True).start()

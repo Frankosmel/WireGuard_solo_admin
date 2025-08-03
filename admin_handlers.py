@@ -7,7 +7,6 @@ from storage import load_users, save_users
 from utils import generate_keypair, get_next_available_ip, generate_conf, generate_qr_code, delete_conf
 from datetime import datetime, timedelta
 import os
-import json
 
 ADMIN_FLOW = {}  # Almacena pasos del flujo activo por admin
 
@@ -42,7 +41,9 @@ def register_admin_handlers(bot: TeleBot):
 
         kb = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
         for plan in PLANES:
-            kb.add(KeyboardButton(plan))
+            emoji = "💼" if "pro" in plan.lower() else "🎁" if "trial" in plan.lower() else "🕐"
+            kb.add(KeyboardButton(f"{emoji} {plan}"))
+        kb.add(KeyboardButton("🔙 Volver"))
 
         bot.send_message(
             message.chat.id,
@@ -54,7 +55,11 @@ def register_admin_handlers(bot: TeleBot):
 
     @bot.message_handler(func=lambda m: is_admin(m.from_user.id) and ADMIN_FLOW.get(m.from_user.id, {}).get('step') == 'awaiting_plan')
     def generate_configuration(message):
-        plan = message.text.strip()
+        if message.text == "🔙 Volver":
+            ADMIN_FLOW.pop(message.from_user.id, None)
+            return show_admin_menu(bot, message.chat.id)
+
+        plan = message.text.replace("💼", "").replace("🎁", "").replace("🕐", "").strip()
         if plan not in PLANES_PRECIOS:
             return bot.reply_to(message, "❌ Plan inválido. Selecciona una opción del teclado.")
 
@@ -72,10 +77,15 @@ def register_admin_handlers(bot: TeleBot):
 
         qr_image = generate_qr_code(path)
 
-        if "dias" in PLANES_PRECIOS[plan]:
-            vencimiento = datetime.utcnow() + timedelta(days=PLANES_PRECIOS[plan]['dias'])
+        dias = PLANES_PRECIOS[plan].get('dias')
+        horas = PLANES_PRECIOS[plan].get('horas')
+
+        if dias:
+            vencimiento = datetime.utcnow() + timedelta(days=dias)
+        elif horas:
+            vencimiento = datetime.utcnow() + timedelta(hours=horas)
         else:
-            vencimiento = datetime.utcnow() + timedelta(hours=PLANES_PRECIOS[plan]['horas'])
+            return bot.send_message(message.chat.id, "⚠️ Error: plan sin duración definida.")
 
         users = load_users()
         users[client_name] = {
@@ -183,4 +193,4 @@ def show_admin_menu(bot: TeleBot, chat_id: int):
         "🔧 <b>Panel de Administrador</b>\n\nSelecciona una opción para gestionar WireGuard:",
         reply_markup=kb,
         parse_mode="HTML"
-                        )
+        )

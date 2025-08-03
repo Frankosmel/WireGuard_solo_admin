@@ -1,4 +1,4 @@
-h# config.py
+# config.py
 
 # Token del bot (reemplaza con tu token real)
 TOKEN = "TU_TOKEN_AQUI"

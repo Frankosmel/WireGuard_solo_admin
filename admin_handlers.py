@@ -2,16 +2,16 @@
 
 from telebot import TeleBot
 from telebot.types import ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
-from config import ADMINS, PLANS
+from config import ADMIN_ID, PLANES, PLANES_PRECIOS, SERVER_PUBLIC_IP
 from storage import load_users, save_users
 from utils import generate_keypair, get_next_available_ip, generate_conf, generate_qr_code, delete_conf
 from datetime import datetime, timedelta
 
-# Diccionario temporal para el flujo de creación
+# Flujo temporal de datos mientras se crea una configuración
 ADMIN_FLOW = {}
 
 def is_admin(user_id):
-    return user_id in ADMINS
+    return user_id == ADMIN_ID
 
 def register_admin_handlers(bot: TeleBot):
 
@@ -23,7 +23,11 @@ def register_admin_handlers(bot: TeleBot):
 
     @bot.message_handler(func=lambda m: is_admin(m.from_user.id) and m.text == "📦 Crear configuración")
     def start_create_config(message):
-        bot.send_message(message.chat.id, "🧾 Escribe un *nombre único* para el cliente (sin espacios ni símbolos):", parse_mode="Markdown")
+        bot.send_message(
+            message.chat.id,
+            "🧾 Escribe un *nombre único* para el cliente (sin espacios ni símbolos):",
+            parse_mode="Markdown"
+        )
         ADMIN_FLOW[message.from_user.id] = {'step': 'awaiting_name'}
 
     @bot.message_handler(func=lambda m: is_admin(m.from_user.id) and m.from_user.id in ADMIN_FLOW and ADMIN_FLOW[m.from_user.id]['step'] == 'awaiting_name')
@@ -35,17 +39,22 @@ def register_admin_handlers(bot: TeleBot):
         ADMIN_FLOW[message.from_user.id]['client_name'] = client_name
 
         kb = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-        for plan in PLANS.keys():
+        for plan in PLANES:
             kb.add(KeyboardButton(plan))
-        bot.send_message(message.chat.id, "🕐 Selecciona un *plan de vencimiento*:", reply_markup=kb, parse_mode="Markdown")
+        bot.send_message(
+            message.chat.id,
+            "🕐 Selecciona un *plan de vencimiento*:",
+            reply_markup=kb,
+            parse_mode="Markdown"
+        )
         ADMIN_FLOW[message.from_user.id]['step'] = 'awaiting_plan'
 
     @bot.message_handler(func=lambda m: is_admin(m.from_user.id) and m.from_user.id in ADMIN_FLOW and ADMIN_FLOW[m.from_user.id]['step'] == 'awaiting_plan')
     def generate_configuration(message):
         plan = message.text.strip()
-        if plan not in PLANS:
+        if plan not in PLANES_PRECIOS:
             return bot.reply_to(message, "❌ Plan inválido. Selecciona una opción del teclado.")
-        
+
         data = ADMIN_FLOW.pop(message.from_user.id)
         client_name = data['client_name']
 
@@ -53,11 +62,18 @@ def register_admin_handlers(bot: TeleBot):
         ip = get_next_available_ip()
         if not ip:
             return bot.send_message(message.chat.id, "❌ No hay IPs disponibles.")
-        
-        path = generate_conf(client_name, private_key, ip, config.SERVER_PUBLIC_KEY)
+
+        path = generate_conf(client_name, private_key, ip, SERVER_PUBLIC_IP)
         qr_image = generate_qr_code(path)
 
-        vencimiento = datetime.utcnow() + timedelta(days=PLANS[plan])
+        # Calcular fecha de vencimiento según el plan seleccionado
+        if "dias" in PLANES_PRECIOS[plan]:
+            vencimiento = datetime.utcnow() + timedelta(days=PLANES_PRECIOS[plan]["dias"])
+        elif "horas" in PLANES_PRECIOS[plan]:
+            vencimiento = datetime.utcnow() + timedelta(hours=PLANES_PRECIOS[plan]["horas"])
+        else:
+            vencimiento = datetime.utcnow() + timedelta(days=15)  # Valor por defecto
+
         users = load_users()
         users[client_name] = {
             "ip": ip,
@@ -67,7 +83,12 @@ def register_admin_handlers(bot: TeleBot):
         }
         save_users(users)
 
-        bot.send_message(message.chat.id, f"✅ Configuración generada para: *{client_name}*\n📅 Vence el: *{vencimiento.strftime('%Y-%m-%d %H:%M')} UTC*", parse_mode="Markdown", reply_markup=ReplyKeyboardRemove())
+        bot.send_message(
+            message.chat.id,
+            f"✅ Configuración generada para: <b>{client_name}</b>\n📅 Vence el: <b>{vencimiento.strftime('%Y-%m-%d %H:%M')} UTC</b>",
+            parse_mode="HTML",
+            reply_markup=ReplyKeyboardRemove()
+        )
         with open(path, "rb") as f:
             bot.send_document(message.chat.id, f)
         bot.send_photo(message.chat.id, qr_image, caption="📲 Escanea este código QR para importar la configuración en tu app.")
@@ -82,7 +103,6 @@ def register_admin_handlers(bot: TeleBot):
         for name in users:
             kb.add(KeyboardButton(name))
         bot.send_message(message.chat.id, "❌ Selecciona la configuración a eliminar:", reply_markup=kb)
-
         ADMIN_FLOW[message.from_user.id] = {'step': 'awaiting_delete'}
 
     @bot.message_handler(func=lambda m: is_admin(m.from_user.id) and m.from_user.id in ADMIN_FLOW and ADMIN_FLOW[m.from_user.id]['step'] == 'awaiting_delete')
@@ -91,7 +111,7 @@ def register_admin_handlers(bot: TeleBot):
         users = load_users()
         if client_name not in users:
             return bot.reply_to(message, "⚠️ Ese cliente no existe.")
-        
+
         delete_conf(client_name)
         del users[client_name]
         save_users(users)
@@ -103,4 +123,4 @@ def show_admin_menu(bot: TeleBot, chat_id: int):
     kb = ReplyKeyboardMarkup(resize_keyboard=True)
     kb.add(KeyboardButton("📦 Crear configuración"))
     kb.add(KeyboardButton("🗑 Eliminar configuración"))
-    bot.send_message(chat_id, "🔧 *Panel de Administrador*", reply_markup=kb, parse_mode="Markdown")
+    bot.send_message(chat_id, "🔧 <b>Panel de Administrador</b>", reply_markup=kb, parse_mode="HTML")

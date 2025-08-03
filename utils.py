@@ -16,6 +16,7 @@ from config import (
     AVISOS_VENCIMIENTO_HORAS,
     REVISIÓN_INTERVALO_SEGUNDOS,
     ADMIN_ID,
+    SERVER_PUBLIC_KEY,  # ✅ Agregado para no pasarlo manualmente
 )
 
 from storage import load_json, save_json
@@ -47,14 +48,14 @@ def get_next_available_ip():
     return None
 
 # 📝 Genera archivo .conf para cliente
-def generate_conf(client_name, private_key, ip, server_pubkey):
+def generate_conf(client_name, private_key, ip):
     config = f"""[Interface]
 PrivateKey = {private_key}
 Address = {ip}/32
 DNS = 1.1.1.1
 
 [Peer]
-PublicKey = {server_pubkey}
+PublicKey = {SERVER_PUBLIC_KEY}
 Endpoint = {SERVER_PUBLIC_IP}:{LISTEN_PORT}
 AllowedIPs = 0.0.0.0/0
 PersistentKeepalive = 25

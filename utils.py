@@ -134,8 +134,8 @@ def schedule_expiration_check(bot):
 
     Thread(target=check_loop, daemon=True).start()
 
-# 🔧 Genera la configuración completa del cliente con claves y plan
-def generate_wg_config(name, expiration_date, plan):
+# 🔧 Genera la configuración completa del cliente
+def generate_wg_config(name, expiration_date):
     users = load_json("users")
 
     if name in users:
@@ -148,22 +148,23 @@ def generate_wg_config(name, expiration_date, plan):
     private_key, public_key = generate_keypair()
     config_path = generate_conf(name, private_key, ip)
 
-    # 🧩 Agrega el peer al servidor WireGuard
-    try:
-        subprocess.run(
-            ["wg", "set", "wg0", "peer", public_key, "allowed-ips", f"{ip}/32"],
-            check=True
-        )
-    except subprocess.CalledProcessError as e:
-        raise RuntimeError(f"❌ Error al agregar el peer al servidor: {e}")
+    # ✅ Verifica si el peer ya existe antes de intentar agregarlo
+    result = subprocess.run(["wg", "show", "wg0", "peers"], capture_output=True, text=True)
+    if public_key not in result.stdout:
+        try:
+            subprocess.run(
+                ["wg", "set", "wg0", "peer", public_key, "allowed-ips", f"{ip}/32"],
+                check=True
+            )
+        except subprocess.CalledProcessError as e:
+            raise RuntimeError(f"❌ Error al agregar el peer al servidor: {e}")
 
     users[name] = {
         "nombre": name,
         "ip": ip,
         "clave_publica": public_key,
         "vencimiento": expiration_date,
-        "expirado": False,
-        "plan": plan
+        "expirado": False
     }
 
     save_json("users", users)
@@ -176,4 +177,4 @@ def generate_wg_config(name, expiration_date, plan):
         "clave_publica": public_key,
         "conf_path": config_path,
         "qr": qr_image
-    }
+                      }

@@ -81,7 +81,8 @@ def register_admin_handlers(bot: TeleBot):
             return bot.send_message(message.chat.id, "⚠️ Error: plan sin duración definida.")
 
         try:
-            path, client_data = generate_wg_config(client_name, vencimiento.strftime('%Y-%m-%d %H:%M:%S'), plan)
+            path, client_data = generate_wg_config(client_name, vencimiento.strftime('%Y-%m-%d %H:%M:%S'))  # CORREGIDO
+            client_data['plan'] = plan  # Se agrega manualmente el plan
             qr_image = generate_qr_code(path)
 
             users = load_users()
@@ -156,7 +157,7 @@ def register_admin_handlers(bot: TeleBot):
         total = len(users)
         planes = {}
         for datos in users.values():
-            p = datos['plan']
+            p = datos.get('plan', 'Desconocido')
             planes[p] = planes.get(p, 0) + 1
 
         texto = f"📊 <b>Estadísticas:</b>\n\n👥 Total clientes: <b>{total}</b>\n"
@@ -192,4 +193,4 @@ def show_admin_menu(bot: TeleBot, chat_id: int):
         "🔧 <b>Panel de Administrador</b>\n\nSelecciona una opción para gestionar WireGuard:",
         reply_markup=kb,
         parse_mode="HTML"
-        )
+                                                )

@@ -4,6 +4,7 @@ import subprocess
 import os
 import ipaddress
 import qrcode
+import shlex
 from io import BytesIO
 from threading import Thread
 from time import sleep
@@ -21,7 +22,6 @@ from config import (
 
 from storage import load_json, save_json
 
-# 🔐 Genera par de claves (privada y pública) de forma segura
 def generate_keypair():
     private_key = subprocess.check_output(['wg', 'genkey']).decode().strip()
     public_key = subprocess.run(
@@ -35,7 +35,6 @@ def generate_keypair():
 
     return private_key, public_key
 
-# 📋 Obtiene IPs ya asignadas
 def get_used_ips():
     used_ips = set()
     users = load_json("users")
@@ -45,7 +44,6 @@ def get_used_ips():
             used_ips.add(ip)
     return used_ips
 
-# 🔢 Encuentra la próxima IP disponible en el rango 10.9.0.2 - 10.9.0.254
 def get_next_available_ip():
     base = ipaddress.IPv4Address("10.9.0.1")
     used_ips = get_used_ips()
@@ -55,7 +53,6 @@ def get_next_available_ip():
             return candidate
     return None
 
-# 📝 Genera archivo .conf de cliente
 def generate_conf(client_name, private_key, ip):
     config = f"""[Interface]
 PrivateKey = {private_key}
@@ -74,7 +71,6 @@ PersistentKeepalive = 25
         f.write(config)
     return path
 
-# 📲 Genera código QR desde .conf
 def generate_qr_code(config_path):
     with open(config_path, "r") as f:
         content = f.read()
@@ -87,7 +83,6 @@ def generate_qr_code(config_path):
     bio.seek(0)
     return bio
 
-# 🗑 Elimina archivo de configuración
 def delete_conf(client_name):
     path = os.path.join(WG_CONFIG_DIR, f"{client_name}.conf")
     if os.path.exists(path):
@@ -95,7 +90,6 @@ def delete_conf(client_name):
         return True
     return False
 
-# ⏳ Verifica vencimientos y notifica automáticamente
 def schedule_expiration_check(bot):
     def check_loop():
         while True:
@@ -146,8 +140,7 @@ def schedule_expiration_check(bot):
 
     Thread(target=check_loop, daemon=True).start()
 
-# 🔧 Genera la configuración completa del cliente
-def generate_wg_config(name, expiration_date):
+def generate_wg_config(name, expiration_date, *args):  # <- Añadido *args para evitar error
     users = load_json("users")
 
     if name in users:
@@ -160,18 +153,20 @@ def generate_wg_config(name, expiration_date):
     private_key, public_key = generate_keypair()
     config_path = generate_conf(name, private_key, ip)
 
-    # ✅ Verifica si ya existe el peer en wg0
+    # Verifica si ya existe el peer en wg0
     try:
         existing_peers = subprocess.check_output("wg show wg0 peers", shell=True).decode().splitlines()
         if public_key in existing_peers:
             raise RuntimeError("⚠️ Este peer ya está registrado en el servidor WireGuard.")
     except subprocess.CalledProcessError:
-        pass  # No hay peers aún
+        pass
 
-    # ➕ Agrega el peer al servidor WireGuard
+    # Agrega el peer al servidor
     try:
         subprocess.run(
-            ["wg", "set", "wg0", "peer", public_key, "allowed-ips", f"{ip}/32"],
+            [
+                "wg", "set", "wg0", "peer", public_key, "allowed-ips", f"{ip}/32"
+            ],
             check=True
         )
     except subprocess.CalledProcessError as e:
@@ -194,4 +189,4 @@ def generate_wg_config(name, expiration_date):
         "clave_publica": public_key,
         "conf_path": config_path,
         "qr": qr_image
-                }
+    }

@@ -99,7 +99,6 @@ def schedule_expiration_check(bot):
                 if not venc:
                     continue
 
-                # Detecta formato de fecha válido
                 try:
                     vencimiento = datetime.strptime(venc, "%Y-%m-%d %H:%M:%S")
                 except ValueError:
@@ -110,7 +109,6 @@ def schedule_expiration_check(bot):
 
                 horas_restantes = (vencimiento - now).total_seconds() / 3600
 
-                # Enviar recordatorios automáticos
                 for aviso in AVISOS_VENCIMIENTO_HORAS:
                     if int(horas_restantes) == aviso and not data.get(f"avisado_{aviso}", False):
                         try:
@@ -123,7 +121,6 @@ def schedule_expiration_check(bot):
                             pass
                         data[f"avisado_{aviso}"] = True
 
-                # Expira configuración si ya venció
                 if horas_restantes <= 0 and not data.get("expirado", False):
                     delete_conf(data["nombre"])
                     try:
@@ -156,6 +153,15 @@ def generate_wg_config(name, expiration_date):
     private_key, public_key = generate_keypair()
     config_path = generate_conf(name, private_key, ip)
 
+    # 🧩 Agrega el peer al servidor WireGuard
+    try:
+        subprocess.run(
+            ["wg", "set", "wg0", "peer", public_key, "allowed-ips", f"{ip}/32"],
+            check=True
+        )
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(f"❌ Error al agregar el peer al servidor: {e}")
+
     users[name] = {
         "nombre": name,
         "ip": ip,
@@ -165,4 +171,13 @@ def generate_wg_config(name, expiration_date):
     }
 
     save_json("users", users)
-    return config_path
+
+    qr_image = generate_qr_code(config_path)
+
+    return {
+        "nombre": name,
+        "ip": ip,
+        "clave_publica": public_key,
+        "conf_path": config_path,
+        "qr": qr_image
+    }

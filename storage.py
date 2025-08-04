@@ -28,8 +28,11 @@ def load_json(name):
     path = FILES.get(name)
     if not path:
         raise ValueError(f"Archivo desconocido: {name}")
-    with open(path, "r") as f:
-        return json.load(f)
+    try:
+        with open(path, "r") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
 
 def save_json(name, data):
     """

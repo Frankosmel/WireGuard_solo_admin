@@ -37,6 +37,10 @@ def register_admin_handlers(bot: TeleBot):
         if " " in client_name or not client_name.isalnum():
             return bot.reply_to(message, "⚠️ Nombre inválido. Usa solo letras y números, sin espacios ni símbolos.")
 
+        users = load_users()
+        if client_name in users:
+            return bot.reply_to(message, "❗ Este nombre ya está en uso. Elige uno diferente.")
+
         ADMIN_FLOW[message.from_user.id]['client_name'] = client_name
 
         kb = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
@@ -77,12 +81,19 @@ def register_admin_handlers(bot: TeleBot):
             return bot.send_message(message.chat.id, "⚠️ Error: plan sin duración definida.")
 
         try:
-            path = generate_wg_config(client_name, vencimiento.strftime('%Y-%m-%d %H:%M:%S'), plan)
+            path, client_data = generate_wg_config(client_name, vencimiento.strftime('%Y-%m-%d %H:%M:%S'), plan)
             qr_image = generate_qr_code(path)
+
+            users = load_users()
+            users[client_name] = client_data
+            save_users(users)
+
         except ValueError as e:
             return bot.send_message(message.chat.id, f"⚠️ Error: {str(e)}")
         except RuntimeError as e:
             return bot.send_message(message.chat.id, f"❌ {str(e)}")
+        except Exception as e:
+            return bot.send_message(message.chat.id, f"🚫 Error inesperado: {str(e)}")
 
         bot.send_message(
             message.chat.id,

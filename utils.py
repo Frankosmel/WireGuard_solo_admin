@@ -23,6 +23,9 @@ from storage import load_json, save_json
 
 
 def generate_keypair():
+    """
+    Genera un par de claves WireGuard (privada y pública).
+    """
     private_key = subprocess.check_output(['wg', 'genkey']).decode().strip()
     public_key = subprocess.run(
         ['wg', 'pubkey'],
@@ -37,6 +40,9 @@ def generate_keypair():
 
 
 def get_used_ips():
+    """
+    Devuelve el conjunto de IPs ya asignadas a usuarios.
+    """
     used_ips = set()
     users = load_json("users")
     for data in users.values():
@@ -47,6 +53,9 @@ def get_used_ips():
 
 
 def get_next_available_ip():
+    """
+    Encuentra la próxima IP disponible en el rango 10.9.0.2 - 10.9.0.254.
+    """
     base = ipaddress.IPv4Address("10.9.0.1")
     used_ips = get_used_ips()
     for i in range(2, 255):
@@ -57,6 +66,9 @@ def get_next_available_ip():
 
 
 def generate_conf(client_name, private_key, ip):
+    """
+    Genera el archivo de configuración .conf de WireGuard para el cliente.
+    """
     config = f"""[Interface]
 PrivateKey = {private_key}
 Address = {ip}/32
@@ -76,6 +88,9 @@ PersistentKeepalive = 25
 
 
 def generate_qr_code(config_path):
+    """
+    Genera un código QR a partir del archivo de configuración .conf.
+    """
     with open(config_path, "r") as f:
         content = f.read()
     qr = qrcode.QRCode(border=1)
@@ -89,6 +104,9 @@ def generate_qr_code(config_path):
 
 
 def delete_conf(client_name):
+    """
+    Elimina el archivo de configuración .conf de un cliente.
+    """
     path = os.path.join(WG_CONFIG_DIR, f"{client_name}.conf")
     if os.path.exists(path):
         os.remove(path)
@@ -97,6 +115,9 @@ def delete_conf(client_name):
 
 
 def schedule_expiration_check(bot):
+    """
+    Hilo que revisa periódicamente el vencimiento de las configuraciones.
+    """
     def check_loop():
         while True:
             users = load_json("users")
@@ -148,6 +169,9 @@ def schedule_expiration_check(bot):
 
 
 def generate_wg_config(name, expiration_date, *args):
+    """
+    Genera configuración, claves, IP y QR de un nuevo cliente WireGuard.
+    """
     users = load_json("users")
 
     if name in users:
@@ -160,15 +184,13 @@ def generate_wg_config(name, expiration_date, *args):
     private_key, public_key = generate_keypair()
     config_path = generate_conf(name, private_key, ip)
 
-    # Verifica si el peer ya está en wg0
     try:
         existing_peers = subprocess.check_output("wg show wg0 peers", shell=True).decode().splitlines()
         if public_key in existing_peers:
             raise RuntimeError("⚠️ Este peer ya está registrado en el servidor WireGuard.")
     except subprocess.CalledProcessError:
-        pass  # Continúa si no puede obtener la lista de peers
+        pass  # No se puede obtener la lista de peers
 
-    # Agrega el peer al servidor
     try:
         subprocess.run(
             [
@@ -198,4 +220,4 @@ def generate_wg_config(name, expiration_date, *args):
         "private_key": private_key,
         "conf_path": config_path,
         "qr": qr_image
-            }
+        }

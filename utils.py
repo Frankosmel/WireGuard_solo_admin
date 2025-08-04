@@ -21,10 +21,18 @@ from config import (
 
 from storage import load_json, save_json
 
-# 🔐 Genera par de claves (privada y pública)
+# 🔐 Genera par de claves (privada y pública) de forma segura
 def generate_keypair():
-    private_key = subprocess.check_output("wg genkey", shell=True).decode().strip()
-    public_key = subprocess.check_output(f"echo {private_key} | wg pubkey", shell=True).decode().strip()
+    private_key = subprocess.check_output(['wg', 'genkey']).decode().strip()
+    public_key = subprocess.run(
+        ['wg', 'pubkey'],
+        input=private_key.encode(),
+        capture_output=True
+    ).stdout.decode().strip()
+
+    if len(private_key) != 44 or len(public_key) != 44:
+        raise ValueError("❌ Error: Las claves deben tener exactamente 44 caracteres base64.")
+
     return private_key, public_key
 
 # 📋 Obtiene IPs ya asignadas
@@ -124,7 +132,11 @@ def schedule_expiration_check(bot):
                 if horas_restantes <= 0 and not data.get("expirado", False):
                     delete_conf(client_name)
                     try:
-                        bot.send_message(int(ADMIN_ID), f"📛 Expiró la configuración de `{client_name}`.", parse_mode="Markdown")
+                        bot.send_message(
+                            int(ADMIN_ID),
+                            f"📛 Expiró la configuración de `{client_name}`.",
+                            parse_mode="Markdown"
+                        )
                     except:
                         pass
                     data["expirado"] = True
@@ -154,7 +166,7 @@ def generate_wg_config(name, expiration_date):
         if public_key in existing_peers:
             raise RuntimeError("⚠️ Este peer ya está registrado en el servidor WireGuard.")
     except subprocess.CalledProcessError:
-        pass  # Si no hay peers aún, no pasa nada
+        pass  # No hay peers aún
 
     # ➕ Agrega el peer al servidor WireGuard
     try:
@@ -174,7 +186,6 @@ def generate_wg_config(name, expiration_date):
     }
 
     save_json("users", users)
-
     qr_image = generate_qr_code(config_path)
 
     return {
@@ -183,4 +194,4 @@ def generate_wg_config(name, expiration_date):
         "clave_publica": public_key,
         "conf_path": config_path,
         "qr": qr_image
-                        }
+                }

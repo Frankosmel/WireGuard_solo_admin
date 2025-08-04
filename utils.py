@@ -148,16 +148,22 @@ def generate_wg_config(name, expiration_date):
     private_key, public_key = generate_keypair()
     config_path = generate_conf(name, private_key, ip)
 
-    # ✅ Verifica si el peer ya existe antes de intentar agregarlo
-    result = subprocess.run(["wg", "show", "wg0", "peers"], capture_output=True, text=True)
-    if public_key not in result.stdout:
-        try:
-            subprocess.run(
-                ["wg", "set", "wg0", "peer", public_key, "allowed-ips", f"{ip}/32"],
-                check=True
-            )
-        except subprocess.CalledProcessError as e:
-            raise RuntimeError(f"❌ Error al agregar el peer al servidor: {e}")
+    # ✅ Verifica si ya existe el peer en wg0
+    try:
+        existing_peers = subprocess.check_output("wg show wg0 peers", shell=True).decode().splitlines()
+        if public_key in existing_peers:
+            raise RuntimeError("⚠️ Este peer ya está registrado en el servidor WireGuard.")
+    except subprocess.CalledProcessError:
+        pass  # Si no hay peers aún, no pasa nada
+
+    # ➕ Agrega el peer al servidor WireGuard
+    try:
+        subprocess.run(
+            ["wg", "set", "wg0", "peer", public_key, "allowed-ips", f"{ip}/32"],
+            check=True
+        )
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(f"❌ Error al agregar el peer al servidor: {e}")
 
     users[name] = {
         "nombre": name,
@@ -177,4 +183,4 @@ def generate_wg_config(name, expiration_date):
         "clave_publica": public_key,
         "conf_path": config_path,
         "qr": qr_image
-                      }
+                        }

@@ -2,9 +2,9 @@
 
 from telebot import TeleBot
 from telebot.types import ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
-from config import ADMIN_ID, PLANES, PLANES_PRECIOS, SERVER_PUBLIC_IP
+from config import ADMIN_ID, PLANES, PLANES_PRECIOS
 from storage import load_users, save_users
-from utils import generate_keypair, get_next_available_ip, generate_conf, generate_qr_code, delete_conf
+from utils import generate_wg_config, generate_qr_code, delete_conf
 from datetime import datetime, timedelta
 import os
 
@@ -66,18 +66,6 @@ def register_admin_handlers(bot: TeleBot):
         data = ADMIN_FLOW.pop(message.from_user.id)
         client_name = data['client_name']
 
-        private_key, public_key = generate_keypair()
-        ip = get_next_available_ip()
-        if not ip:
-            return bot.send_message(message.chat.id, "❌ No hay IPs disponibles actualmente.")
-
-        # ✅ Corregido: eliminamos parámetro extra no compatible
-        path = generate_conf(client_name, private_key, ip)
-        if not path or not os.path.exists(path):
-            return bot.send_message(message.chat.id, "⚠️ Error al generar archivo .conf.")
-
-        qr_image = generate_qr_code(path)
-
         dias = PLANES_PRECIOS[plan].get('dias')
         horas = PLANES_PRECIOS[plan].get('horas')
 
@@ -88,14 +76,13 @@ def register_admin_handlers(bot: TeleBot):
         else:
             return bot.send_message(message.chat.id, "⚠️ Error: plan sin duración definida.")
 
-        users = load_users()
-        users[client_name] = {
-            "ip": ip,
-            "public_key": public_key,
-            "vencimiento": vencimiento.strftime('%Y-%m-%d %H:%M:%S'),
-            "plan": plan
-        }
-        save_users(users)
+        try:
+            path = generate_wg_config(client_name, vencimiento.strftime('%Y-%m-%d %H:%M:%S'), plan)
+            qr_image = generate_qr_code(path)
+        except ValueError as e:
+            return bot.send_message(message.chat.id, f"⚠️ Error: {str(e)}")
+        except RuntimeError as e:
+            return bot.send_message(message.chat.id, f"❌ {str(e)}")
 
         bot.send_message(
             message.chat.id,
@@ -194,4 +181,4 @@ def show_admin_menu(bot: TeleBot, chat_id: int):
         "🔧 <b>Panel de Administrador</b>\n\nSelecciona una opción para gestionar WireGuard:",
         reply_markup=kb,
         parse_mode="HTML"
-                                   )
+        )

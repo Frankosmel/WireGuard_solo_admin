@@ -4,7 +4,6 @@ import subprocess
 import os
 import ipaddress
 import qrcode
-import shlex
 from io import BytesIO
 from threading import Thread
 from time import sleep
@@ -22,6 +21,7 @@ from config import (
 
 from storage import load_json, save_json
 
+
 def generate_keypair():
     private_key = subprocess.check_output(['wg', 'genkey']).decode().strip()
     public_key = subprocess.run(
@@ -35,6 +35,7 @@ def generate_keypair():
 
     return private_key, public_key
 
+
 def get_used_ips():
     used_ips = set()
     users = load_json("users")
@@ -44,6 +45,7 @@ def get_used_ips():
             used_ips.add(ip)
     return used_ips
 
+
 def get_next_available_ip():
     base = ipaddress.IPv4Address("10.9.0.1")
     used_ips = get_used_ips()
@@ -52,6 +54,7 @@ def get_next_available_ip():
         if candidate not in used_ips:
             return candidate
     return None
+
 
 def generate_conf(client_name, private_key, ip):
     config = f"""[Interface]
@@ -71,6 +74,7 @@ PersistentKeepalive = 25
         f.write(config)
     return path
 
+
 def generate_qr_code(config_path):
     with open(config_path, "r") as f:
         content = f.read()
@@ -83,12 +87,14 @@ def generate_qr_code(config_path):
     bio.seek(0)
     return bio
 
+
 def delete_conf(client_name):
     path = os.path.join(WG_CONFIG_DIR, f"{client_name}.conf")
     if os.path.exists(path):
         os.remove(path)
         return True
     return False
+
 
 def schedule_expiration_check(bot):
     def check_loop():
@@ -119,7 +125,7 @@ def schedule_expiration_check(bot):
                                 f"🔔 Aviso: La configuración `{client_name}` vence en *{aviso} horas*.",
                                 parse_mode="Markdown"
                             )
-                        except:
+                        except Exception:
                             pass
                         data[f"avisado_{aviso}"] = True
 
@@ -131,7 +137,7 @@ def schedule_expiration_check(bot):
                             f"📛 Expiró la configuración de `{client_name}`.",
                             parse_mode="Markdown"
                         )
-                    except:
+                    except Exception:
                         pass
                     data["expirado"] = True
 
@@ -140,26 +146,27 @@ def schedule_expiration_check(bot):
 
     Thread(target=check_loop, daemon=True).start()
 
-def generate_wg_config(name, expiration_date, *args):  # <- Añadido *args para evitar error
+
+def generate_wg_config(name, expiration_date, *args):
     users = load_json("users")
 
     if name in users:
-        raise ValueError("Este nombre ya está registrado.")
+        raise ValueError("⚠️ Este nombre ya está registrado.")
 
     ip = get_next_available_ip()
     if not ip:
-        raise RuntimeError("No hay IPs disponibles en el rango asignado.")
+        raise RuntimeError("❌ No hay IPs disponibles en el rango asignado.")
 
     private_key, public_key = generate_keypair()
     config_path = generate_conf(name, private_key, ip)
 
-    # Verifica si ya existe el peer en wg0
+    # Verifica si el peer ya está en wg0
     try:
         existing_peers = subprocess.check_output("wg show wg0 peers", shell=True).decode().splitlines()
         if public_key in existing_peers:
             raise RuntimeError("⚠️ Este peer ya está registrado en el servidor WireGuard.")
     except subprocess.CalledProcessError:
-        pass
+        pass  # Continúa si no puede obtener la lista de peers
 
     # Agrega el peer al servidor
     try:
@@ -176,6 +183,7 @@ def generate_wg_config(name, expiration_date, *args):  # <- Añadido *args para 
         "nombre": name,
         "ip": ip,
         "clave_publica": public_key,
+        "private_key": private_key,
         "vencimiento": expiration_date,
         "expirado": False
     }
@@ -187,6 +195,7 @@ def generate_wg_config(name, expiration_date, *args):  # <- Añadido *args para 
         "nombre": name,
         "ip": ip,
         "clave_publica": public_key,
+        "private_key": private_key,
         "conf_path": config_path,
         "qr": qr_image
-    }
+            }

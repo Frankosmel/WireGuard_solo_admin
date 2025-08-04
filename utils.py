@@ -94,7 +94,7 @@ def schedule_expiration_check(bot):
             users = load_json("users")
             now = datetime.now()
 
-            for user_id, data in users.items():
+            for client_name, data in users.items():
                 venc = data.get("vencimiento")
                 if not venc:
                     continue
@@ -113,8 +113,8 @@ def schedule_expiration_check(bot):
                     if int(horas_restantes) == aviso and not data.get(f"avisado_{aviso}", False):
                         try:
                             bot.send_message(
-                                int(user_id),
-                                f"🔔 *Aviso de vencimiento*\nTu configuración expira en *{aviso} horas*.\nRenueva para no perder la conexión.",
+                                int(ADMIN_ID),
+                                f"🔔 Aviso: La configuración `{client_name}` vence en *{aviso} horas*.",
                                 parse_mode="Markdown"
                             )
                         except:
@@ -122,16 +122,11 @@ def schedule_expiration_check(bot):
                         data[f"avisado_{aviso}"] = True
 
                 if horas_restantes <= 0 and not data.get("expirado", False):
-                    delete_conf(data["nombre"])
+                    delete_conf(client_name)
                     try:
-                        bot.send_message(int(user_id), "❌ Tu configuración ha expirado.")
+                        bot.send_message(int(ADMIN_ID), f"📛 Expiró la configuración de `{client_name}`.", parse_mode="Markdown")
                     except:
                         pass
-                    bot.send_message(
-                        ADMIN_ID,
-                        f"📛 Expiró la configuración de `{data['nombre']}` (Usuario ID: {user_id})",
-                        parse_mode="Markdown"
-                    )
                     data["expirado"] = True
 
             save_json("users", users)

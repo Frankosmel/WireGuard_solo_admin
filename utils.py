@@ -46,7 +46,7 @@ def generate_keypair():
 
 def get_used_ips():
     """
-    Devuelve el conjunto de IPs ya asignadas a usuarios.
+    Devuelve el conjunto de IPs ya asignadas en el archivo users.json.
     """
     used_ips = set()
     users = load_json("users")
@@ -57,17 +57,42 @@ def get_used_ips():
     return used_ips
 
 
+def get_active_wg_ips():
+    """
+    Devuelve el conjunto de IPs activas actualmente en wg0.
+    """
+    try:
+        output = subprocess.check_output(['wg', 'show', 'wg0', 'allowed-ips']).decode()
+        return set(line.split()[0] for line in output.splitlines())
+    except Exception:
+        return set()
+
+
 def get_next_available_ip():
     """
     Encuentra la próxima IP disponible en el rango 10.9.0.2 - 10.9.0.254.
     """
     base = ipaddress.IPv4Address("10.9.0.1")
     used_ips = get_used_ips()
+    active_ips = get_active_wg_ips()
+    all_used = used_ips.union(active_ips)
+
     for i in range(2, 255):
         candidate = str(base + i)
-        if candidate not in used_ips:
+        if candidate not in all_used:
             return candidate
     return None
+
+
+def peer_already_exists(public_key):
+    """
+    Verifica si una clave pública ya está agregada como peer en wg0.
+    """
+    try:
+        output = subprocess.check_output(['wg', 'show', 'wg0', 'dump']).decode()
+        return public_key in output
+    except Exception:
+        return False
 
 
 def generate_conf(client_name, private_key, ip):
@@ -187,7 +212,7 @@ def schedule_expiration_check(bot):
 
 def generate_wg_config(name, expiration_date, *args):
     """
-    Genera configuración, claves, IP y QR de un nuevo cliente WireGuard.
+    Genera configuración, claves, IP, agrega el peer, guarda en users y retorna el QR.
     """
     users = load_json("users")
 
@@ -199,9 +224,12 @@ def generate_wg_config(name, expiration_date, *args):
         raise RuntimeError("❌ No hay IPs disponibles en el rango asignado.")
 
     private_key, public_key = generate_keypair()
+
+    if peer_already_exists(public_key):
+        raise RuntimeError("🚫 Ya existe un peer con esta clave pública en el servidor.")
+
     config_path = generate_conf(name, private_key, ip)
 
-    # Agregar peer al servidor
     try:
         subprocess.run(
             ["wg", "set", "wg0", "peer", public_key, "allowed-ips", f"{ip}/32"],
@@ -230,4 +258,4 @@ def generate_wg_config(name, expiration_date, *args):
         "private_key": private_key,
         "conf_path": config_path,
         "qr": qr_image
-             }
+    }

@@ -26,17 +26,22 @@ def generate_keypair():
     """
     Genera un par de claves WireGuard (privada y pública).
     """
-    private_key = subprocess.check_output(['wg', 'genkey']).decode().strip()
-    public_key = subprocess.run(
-        ['wg', 'pubkey'],
-        input=private_key.encode(),
-        capture_output=True
-    ).stdout.decode().strip()
+    try:
+        private_key = subprocess.check_output(['wg', 'genkey']).decode().strip()
+        public_key = subprocess.run(
+            ['wg', 'pubkey'],
+            input=private_key.encode(),
+            capture_output=True,
+            check=True
+        ).stdout.decode().strip()
 
-    if len(private_key) != 44 or len(public_key) != 44:
-        raise ValueError("❌ Error: Las claves deben tener exactamente 44 caracteres base64.")
+        if len(private_key) != 44 or len(public_key) != 44:
+            raise ValueError("❌ Las claves deben tener exactamente 44 caracteres base64.")
 
-    return private_key, public_key
+        return private_key, public_key
+    except Exception as e:
+        print(f"❌ Error al generar las claves: {e}")
+        raise
 
 
 def get_used_ips():
@@ -80,27 +85,35 @@ Endpoint = {SERVER_PUBLIC_IP}:{LISTEN_PORT}
 AllowedIPs = 0.0.0.0/0
 PersistentKeepalive = 25
 """
-    os.makedirs(WG_CONFIG_DIR, exist_ok=True)
-    path = os.path.join(WG_CONFIG_DIR, f"{client_name}.conf")
-    with open(path, "w") as f:
-        f.write(config)
-    return path
+    try:
+        os.makedirs(WG_CONFIG_DIR, exist_ok=True)
+        path = os.path.join(WG_CONFIG_DIR, f"{client_name}.conf")
+        with open(path, "w") as f:
+            f.write(config)
+        return path
+    except Exception as e:
+        print(f"❌ Error al generar el archivo .conf: {e}")
+        raise
 
 
 def generate_qr_code(config_path):
     """
     Genera un código QR a partir del archivo de configuración .conf.
     """
-    with open(config_path, "r") as f:
-        content = f.read()
-    qr = qrcode.QRCode(border=1)
-    qr.add_data(content)
-    qr.make(fit=True)
-    img = qr.make_image(fill_color="black", back_color="white")
-    bio = BytesIO()
-    img.save(bio, format='PNG')
-    bio.seek(0)
-    return bio
+    try:
+        with open(config_path, "r") as f:
+            content = f.read()
+        qr = qrcode.QRCode(border=1)
+        qr.add_data(content)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color="black", back_color="white")
+        bio = BytesIO()
+        img.save(bio, format='PNG')
+        bio.seek(0)
+        return bio
+    except Exception as e:
+        print(f"❌ Error al generar el código QR: {e}")
+        raise
 
 
 def delete_conf(client_name):
@@ -120,50 +133,54 @@ def schedule_expiration_check(bot):
     """
     def check_loop():
         while True:
-            users = load_json("users")
-            now = datetime.now()
+            try:
+                users = load_json("users")
+                now = datetime.now()
 
-            for client_name, data in users.items():
-                venc = data.get("vencimiento")
-                if not venc:
-                    continue
-
-                try:
-                    vencimiento = datetime.strptime(venc, "%Y-%m-%d %H:%M:%S")
-                except ValueError:
-                    try:
-                        vencimiento = datetime.strptime(venc, "%Y-%m-%d")
-                    except ValueError:
+                for client_name, data in users.items():
+                    venc = data.get("vencimiento")
+                    if not venc:
                         continue
 
-                horas_restantes = (vencimiento - now).total_seconds() / 3600
+                    try:
+                        vencimiento = datetime.strptime(venc, "%Y-%m-%d %H:%M:%S")
+                    except ValueError:
+                        try:
+                            vencimiento = datetime.strptime(venc, "%Y-%m-%d")
+                        except ValueError:
+                            continue
 
-                for aviso in AVISOS_VENCIMIENTO_HORAS:
-                    if int(horas_restantes) == aviso and not data.get(f"avisado_{aviso}", False):
+                    horas_restantes = (vencimiento - now).total_seconds() / 3600
+
+                    for aviso in AVISOS_VENCIMIENTO_HORAS:
+                        if int(horas_restantes) == aviso and not data.get(f"avisado_{aviso}", False):
+                            try:
+                                bot.send_message(
+                                    int(ADMIN_ID),
+                                    f"🔔 Aviso: La configuración `{client_name}` vence en *{aviso} horas*.",
+                                    parse_mode="Markdown"
+                                )
+                            except Exception as e:
+                                print(f"⚠️ Error al notificar vencimiento: {e}")
+                            data[f"avisado_{aviso}"] = True
+
+                    if horas_restantes <= 0 and not data.get("expirado", False):
+                        delete_conf(client_name)
                         try:
                             bot.send_message(
                                 int(ADMIN_ID),
-                                f"🔔 Aviso: La configuración `{client_name}` vence en *{aviso} horas*.",
+                                f"📛 Expiró la configuración de `{client_name}`.",
                                 parse_mode="Markdown"
                             )
-                        except Exception:
-                            pass
-                        data[f"avisado_{aviso}"] = True
+                        except Exception as e:
+                            print(f"⚠️ Error al notificar expiración: {e}")
+                        data["expirado"] = True
 
-                if horas_restantes <= 0 and not data.get("expirado", False):
-                    delete_conf(client_name)
-                    try:
-                        bot.send_message(
-                            int(ADMIN_ID),
-                            f"📛 Expiró la configuración de `{client_name}`.",
-                            parse_mode="Markdown"
-                        )
-                    except Exception:
-                        pass
-                    data["expirado"] = True
-
-            save_json("users", users)
-            sleep(REVISIÓN_INTERVALO_SEGUNDOS)
+                save_json("users", users)
+                sleep(REVISIÓN_INTERVALO_SEGUNDOS)
+            except Exception as e:
+                print(f"❌ Error inesperado en revisión de expiraciones: {e}")
+                sleep(30)
 
     Thread(target=check_loop, daemon=True).start()
 
@@ -184,27 +201,20 @@ def generate_wg_config(name, expiration_date, *args):
     private_key, public_key = generate_keypair()
     config_path = generate_conf(name, private_key, ip)
 
-    try:
-        existing_peers = subprocess.check_output("wg show wg0 peers", shell=True).decode().splitlines()
-        if public_key in existing_peers:
-            raise RuntimeError("⚠️ Este peer ya está registrado en el servidor WireGuard.")
-    except subprocess.CalledProcessError:
-        pass  # No se puede obtener la lista de peers
-
+    # Agregar peer al servidor
     try:
         subprocess.run(
-            [
-                "wg", "set", "wg0", "peer", public_key, "allowed-ips", f"{ip}/32"
-            ],
+            ["wg", "set", "wg0", "peer", public_key, "allowed-ips", f"{ip}/32"],
             check=True
         )
     except subprocess.CalledProcessError as e:
+        print(f"❌ Error al agregar peer al servidor: {e}")
         raise RuntimeError(f"❌ Error al agregar el peer al servidor: {e}")
 
     users[name] = {
         "nombre": name,
         "ip": ip,
-        "clave_publica": public_key,
+        "public_key": public_key,
         "private_key": private_key,
         "vencimiento": expiration_date,
         "expirado": False
@@ -216,8 +226,8 @@ def generate_wg_config(name, expiration_date, *args):
     return {
         "nombre": name,
         "ip": ip,
-        "clave_publica": public_key,
+        "public_key": public_key,
         "private_key": private_key,
         "conf_path": config_path,
         "qr": qr_image
-        }
+             }

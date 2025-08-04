@@ -48,7 +48,7 @@ def register_admin_handlers(bot: TeleBot):
 
         kb = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
         for plan in PLANES:
-            emoji = "💼" if "pro" in plan.lower() else "🎁" if "trial" in plan.lower() else "🕐"
+            emoji = "💼" if "pro" in plan.lower() else "🎁" if "free" in plan.lower() else "🕐"
             kb.add(KeyboardButton(f"{emoji} {plan}"))
         kb.add(KeyboardButton("🔙 Volver"))
 
@@ -70,19 +70,18 @@ def register_admin_handlers(bot: TeleBot):
 
         data = ADMIN_FLOW.pop(message.from_user.id)
         client_name = data['client_name']
-        dias = PLANES_PRECIOS[plan].get('dias')
-        horas = PLANES_PRECIOS[plan].get('horas')
-
-        vencimiento = datetime.utcnow() + timedelta(days=dias or 0, hours=horas or 0)
+        dias = PLANES_PRECIOS[plan].get('dias', 0)
+        horas = PLANES_PRECIOS[plan].get('horas', 0)
+        vencimiento = datetime.utcnow() + timedelta(days=dias, hours=horas)
 
         try:
             result = generate_wg_config(client_name, vencimiento.strftime('%Y-%m-%d %H:%M:%S'))
-            path = result['conf_path']
+            conf_path = result["conf_path"]
             client_data = {
                 "private_key": result["private_key"],
                 "public_key": result["public_key"],
                 "ip": result["ip"],
-                "conf_path": path,
+                "conf_path": conf_path,
                 "vencimiento": vencimiento.strftime('%Y-%m-%d %H:%M:%S'),
                 "plan": plan
             }
@@ -98,11 +97,11 @@ def register_admin_handlers(bot: TeleBot):
                 reply_markup=ReplyKeyboardRemove()
             )
 
-            with open(path, "rb") as f:
+            with open(conf_path, "rb") as f:
                 bot.send_document(message.chat.id, f)
 
-            qr_image = generate_qr_code(path)
-            bot.send_photo(message.chat.id, qr_image, caption="📲 Escanea este código QR con WireGuard")
+            qr_img = generate_qr_code(conf_path)
+            bot.send_photo(message.chat.id, qr_img, caption="📲 Escanea este código QR con WireGuard")
 
         except ValueError as e:
             bot.send_message(message.chat.id, f"⚠️ Error: {str(e)}")
@@ -140,7 +139,7 @@ def register_admin_handlers(bot: TeleBot):
             parse_mode="HTML",
             reply_markup=ReplyKeyboardRemove()
         )
-        ADMIN_FLOW.pop(message.from_user.id)
+        ADMIN_FLOW.pop(message.from_user.id, None)
 
     @bot.message_handler(func=lambda m: is_admin(m.from_user.id) and m.text == "📄 Ver configuraciones activas")
     def ver_configuraciones(message):
@@ -196,4 +195,4 @@ def show_admin_menu(bot: TeleBot, chat_id: int):
         "🔧 <b>Panel de Administración</b>\n\nElige una opción para gestionar WireGuard:",
         reply_markup=kb,
         parse_mode="HTML"
-        )
+            )

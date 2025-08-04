@@ -134,8 +134,8 @@ def schedule_expiration_check(bot):
 
     Thread(target=check_loop, daemon=True).start()
 
-# 🔧 Genera la configuración completa del cliente
-def generate_wg_config(name, expiration_date):
+# 🔧 Genera la configuración completa del cliente con claves y plan
+def generate_wg_config(name, expiration_date, plan):
     users = load_json("users")
 
     if name in users:
@@ -162,7 +162,8 @@ def generate_wg_config(name, expiration_date):
         "ip": ip,
         "clave_publica": public_key,
         "vencimiento": expiration_date,
-        "expirado": False
+        "expirado": False,
+        "plan": plan
     }
 
     save_json("users", users)

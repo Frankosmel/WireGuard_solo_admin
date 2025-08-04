@@ -8,7 +8,7 @@ from utils import generate_wg_config, generate_qr_code, delete_conf
 from datetime import datetime, timedelta
 import os
 
-ADMIN_FLOW = {}  # Almacena pasos del flujo activo por admin
+ADMIN_FLOW = {}  # Flujo activo por administrador
 
 def is_admin(user_id):
     return user_id == ADMIN_ID
@@ -35,13 +35,16 @@ def register_admin_handlers(bot: TeleBot):
     def ask_plan(message):
         client_name = message.text.strip()
         if " " in client_name or not client_name.isalnum():
-            return bot.reply_to(message, "⚠️ Nombre inválido. Usa solo letras y números, sin espacios ni símbolos.")
+            return bot.reply_to(message, "⚠️ Nombre inválido. Usa solo letras y números.")
 
         users = load_users()
         if client_name in users:
-            return bot.reply_to(message, "❗ Este nombre ya está en uso. Elige uno diferente.")
+            return bot.reply_to(message, "❗ Este nombre ya está en uso. Elige otro diferente.")
 
-        ADMIN_FLOW[message.from_user.id]['client_name'] = client_name
+        ADMIN_FLOW[message.from_user.id] = {
+            'step': 'awaiting_plan',
+            'client_name': client_name
+        }
 
         kb = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
         for plan in PLANES:
@@ -51,11 +54,9 @@ def register_admin_handlers(bot: TeleBot):
 
         bot.send_message(
             message.chat.id,
-            "🕐 Selecciona un *plan de vencimiento* para esta configuración:",
-            reply_markup=kb,
-            parse_mode="Markdown"
+            "📆 Selecciona un plan de vencimiento:",
+            reply_markup=kb
         )
-        ADMIN_FLOW[message.from_user.id]['step'] = 'awaiting_plan'
 
     @bot.message_handler(func=lambda m: is_admin(m.from_user.id) and ADMIN_FLOW.get(m.from_user.id, {}).get('step') == 'awaiting_plan')
     def generate_configuration(message):
@@ -65,50 +66,50 @@ def register_admin_handlers(bot: TeleBot):
 
         plan = message.text.replace("💼", "").replace("🎁", "").replace("🕐", "").strip()
         if plan not in PLANES_PRECIOS:
-            return bot.reply_to(message, "❌ Plan inválido. Selecciona una opción del teclado.")
+            return bot.reply_to(message, "❌ Plan inválido. Usa los botones del teclado.")
 
         data = ADMIN_FLOW.pop(message.from_user.id)
         client_name = data['client_name']
-
         dias = PLANES_PRECIOS[plan].get('dias')
         horas = PLANES_PRECIOS[plan].get('horas')
 
-        if dias:
-            vencimiento = datetime.utcnow() + timedelta(days=dias)
-        elif horas:
-            vencimiento = datetime.utcnow() + timedelta(hours=horas)
-        else:
-            return bot.send_message(message.chat.id, "⚠️ Error: plan sin duración definida.")
+        vencimiento = datetime.utcnow() + timedelta(days=dias or 0, hours=horas or 0)
 
         try:
             result = generate_wg_config(client_name, vencimiento.strftime('%Y-%m-%d %H:%M:%S'))
             path = result['conf_path']
-            client_data = result
-            client_data['plan'] = plan  # Se agrega manualmente el plan
-            qr_image = generate_qr_code(path)
+            client_data = {
+                "private_key": result["private_key"],
+                "public_key": result["public_key"],
+                "ip": result["ip"],
+                "conf_path": path,
+                "vencimiento": vencimiento.strftime('%Y-%m-%d %H:%M:%S'),
+                "plan": plan
+            }
 
             users = load_users()
             users[client_name] = client_data
             save_users(users)
 
+            bot.send_message(
+                message.chat.id,
+                f"✅ Configuración generada para: <b>{client_name}</b>\n📅 Vence: <b>{vencimiento.strftime('%Y-%m-%d %H:%M')}</b>",
+                parse_mode="HTML",
+                reply_markup=ReplyKeyboardRemove()
+            )
+
+            with open(path, "rb") as f:
+                bot.send_document(message.chat.id, f)
+
+            qr_image = generate_qr_code(path)
+            bot.send_photo(message.chat.id, qr_image, caption="📲 Escanea este código QR con WireGuard")
+
         except ValueError as e:
-            return bot.send_message(message.chat.id, f"⚠️ Error: {str(e)}")
+            bot.send_message(message.chat.id, f"⚠️ Error: {str(e)}")
         except RuntimeError as e:
-            return bot.send_message(message.chat.id, f"❌ {str(e)}")
+            bot.send_message(message.chat.id, f"❌ {str(e)}")
         except Exception as e:
-            return bot.send_message(message.chat.id, f"🚫 Error inesperado: {str(e)}")
-
-        bot.send_message(
-            message.chat.id,
-            f"✅ Configuración generada para: <b>{client_name}</b>\n📅 Vence: <b>{vencimiento.strftime('%Y-%m-%d %H:%M')}</b>",
-            parse_mode="HTML",
-            reply_markup=ReplyKeyboardRemove()
-        )
-
-        with open(path, "rb") as f:
-            bot.send_document(message.chat.id, f)
-
-        bot.send_photo(message.chat.id, qr_image, caption="📲 Escanea este código QR en tu app WireGuard")
+            bot.send_message(message.chat.id, f"🚫 Error inesperado: {str(e)}")
 
     @bot.message_handler(func=lambda m: is_admin(m.from_user.id) and m.text == "🗑 Eliminar configuración")
     def eliminar_config_prompt(message):
@@ -159,10 +160,10 @@ def register_admin_handlers(bot: TeleBot):
         total = len(users)
         planes = {}
         for datos in users.values():
-            p = datos.get('plan', 'Desconocido')
-            planes[p] = planes.get(p, 0) + 1
+            plan = datos.get('plan', 'Desconocido')
+            planes[plan] = planes.get(plan, 0) + 1
 
-        texto = f"📊 <b>Estadísticas:</b>\n\n👥 Total clientes: <b>{total}</b>\n"
+        texto = f"📊 <b>Estadísticas:</b>\n\n👥 Total de clientes: <b>{total}</b>\n"
         for plan, count in planes.items():
             texto += f"🔹 {plan}: {count}\n"
 
@@ -172,14 +173,14 @@ def register_admin_handlers(bot: TeleBot):
     def enviar_respaldo(message):
         path = os.path.join("data", "users.json")
         if not os.path.exists(path):
-            return bot.send_message(message.chat.id, "⚠️ Archivo de usuarios no encontrado.")
+            return bot.send_message(message.chat.id, "⚠️ Archivo de respaldo no encontrado.")
 
         with open(path, "rb") as f:
-            bot.send_document(message.chat.id, f, caption="📁 Archivo JSON de respaldo")
+            bot.send_document(message.chat.id, f, caption="📁 Respaldo de usuarios")
 
     @bot.message_handler(func=lambda m: is_admin(m.from_user.id) and m.text == "🔙 Salir")
     def salir_panel(message):
-        bot.send_message(message.chat.id, "🔽 Teclado ocultado.", reply_markup=ReplyKeyboardRemove())
+        bot.send_message(message.chat.id, "✅ Menú cerrado.", reply_markup=ReplyKeyboardRemove())
 
 def show_admin_menu(bot: TeleBot, chat_id: int):
     kb = ReplyKeyboardMarkup(resize_keyboard=True)
@@ -192,7 +193,7 @@ def show_admin_menu(bot: TeleBot, chat_id: int):
 
     bot.send_message(
         chat_id,
-        "🔧 <b>Panel de Administrador</b>\n\nSelecciona una opción para gestionar WireGuard:",
+        "🔧 <b>Panel de Administración</b>\n\nElige una opción para gestionar WireGuard:",
         reply_markup=kb,
         parse_mode="HTML"
         )

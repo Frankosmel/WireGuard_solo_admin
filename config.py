@@ -10,7 +10,7 @@ ADMIN_ID = 1383931339  # Reemplaza por tu ID si cambia
 SERVER_PUBLIC_IP = "3.145.41.118"  # IP de tu VPS
 
 # Clave pública del servidor WireGuard (para crear .conf)
-SERVER_PUBLIC_KEY = "4yK4DPTxzBBuYQfxag4UnPQqOuGg4nP9uZL29qXPoHQ="
+SERVER_PUBLIC_KEY = "QLtoHUIcW2s/ZZ3tgKZ3wSidEy778prOGWIGo2cXhHw="
 
 # Puerto de escucha del servidor WireGuard (por defecto 51820)
 LISTEN_PORT = 51820

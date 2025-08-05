@@ -263,7 +263,7 @@ def generate_wg_config(name, expiration_date, *args):
 
     try:
         subprocess.run(
-            ["wg", "set", "wg0", "peer", public_key, "allowed-ips", f"{ip}/32"],
+            ["sudo", "wg", "set", "wg0", "peer", public_key, "allowed-ips", f"{ip}/32"],
             check=True
         )
     except subprocess.CalledProcessError as e:

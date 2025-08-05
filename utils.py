@@ -210,6 +210,37 @@ def schedule_expiration_check(bot):
     Thread(target=check_loop, daemon=True).start()
 
 
+def enable_ip_forwarding():
+    """
+    Habilita el reenvío de IP y configura iptables para permitir acceso a Internet desde clientes WireGuard.
+    """
+    try:
+        # Activar el reenvío temporalmente
+        subprocess.run(["sysctl", "-w", "net.ipv4.ip_forward=1"], check=True)
+
+        # Hacerlo permanente (si aún no lo es)
+        with open("/etc/sysctl.conf", "a") as sysctl_conf:
+            sysctl_conf.write("\nnet.ipv4.ip_forward=1\n")
+        subprocess.run(["sysctl", "-p"], check=True)
+
+        # Reglas de NAT con iptables si aún no existen
+        result = subprocess.run(
+            ["iptables", "-t", "nat", "-C", "POSTROUTING", "-o", "enX0", "-j", "MASQUERADE"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+        if result.returncode != 0:
+            subprocess.run(["iptables", "-t", "nat", "-A", "POSTROUTING", "-o", "enX0", "-j", "MASQUERADE"], check=True)
+
+        # Permitir tráfico entrante y saliente a través de wg0
+        subprocess.run(["iptables", "-A", "FORWARD", "-i", "wg0", "-j", "ACCEPT"], check=True)
+        subprocess.run(["iptables", "-A", "FORWARD", "-o", "wg0", "-j", "ACCEPT"], check=True)
+
+        print("✅ Reenvío de IP y reglas NAT configuradas correctamente.")
+    except Exception as e:
+        print(f"❌ Error al configurar el reenvío de IP: {e}")
+
+
 def generate_wg_config(name, expiration_date, *args):
     """
     Genera configuración, claves, IP, agrega el peer, guarda en users y retorna el QR.
@@ -259,3 +290,7 @@ def generate_wg_config(name, expiration_date, *args):
         "conf_path": config_path,
         "qr": qr_image
     }
+
+
+# Ejecutar al cargar el archivo para asegurar la configuración de red
+enable_ip_forwarding()

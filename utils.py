@@ -23,9 +23,6 @@ from storage import load_json, save_json
 
 
 def generate_keypair():
-    """
-    Genera un par de claves WireGuard (privada y pública).
-    """
     try:
         private_key = subprocess.check_output(['wg', 'genkey']).decode().strip()
         public_key = subprocess.run(
@@ -45,9 +42,6 @@ def generate_keypair():
 
 
 def get_used_ips():
-    """
-    Devuelve el conjunto de IPs ya asignadas en el archivo users.json.
-    """
     used_ips = set()
     users = load_json("users")
     for data in users.values():
@@ -59,19 +53,26 @@ def get_used_ips():
 
 def get_active_wg_ips():
     """
-    Devuelve el conjunto de IPs activas actualmente en wg0.
+    Devuelve el conjunto de IPs activas actualmente en wg0 usando 'wg show wg0 dump'.
     """
     try:
-        output = subprocess.check_output(['wg', 'show', 'wg0', 'allowed-ips']).decode()
-        return set(line.split()[0] for line in output.splitlines())
-    except Exception:
+        output = subprocess.check_output(['wg', 'show', 'wg0', 'dump']).decode()
+        lines = output.strip().splitlines()
+        # Saltar la primera línea si es encabezado, aunque usualmente no lo es
+        ips = set()
+        for line in lines:
+            parts = line.split()
+            if len(parts) >= 4:
+                allowed_ips = parts[3]
+                if allowed_ips != "(none)":
+                    ips.add(allowed_ips.split(",")[0])
+        return ips
+    except Exception as e:
+        print(f"⚠️ Error al obtener IPs activas de wg0: {e}")
         return set()
 
 
 def get_next_available_ip():
-    """
-    Encuentra la próxima IP disponible en el rango 10.9.0.2 - 10.9.0.254.
-    """
     base = ipaddress.IPv4Address("10.9.0.1")
     used_ips = get_used_ips()
     active_ips = get_active_wg_ips()
@@ -85,9 +86,6 @@ def get_next_available_ip():
 
 
 def peer_already_exists(public_key):
-    """
-    Verifica si una clave pública ya está agregada como peer en wg0.
-    """
     try:
         output = subprocess.check_output(['wg', 'show', 'wg0', 'dump']).decode()
         return public_key in output
@@ -96,9 +94,6 @@ def peer_already_exists(public_key):
 
 
 def generate_conf(client_name, private_key, ip):
-    """
-    Genera el archivo de configuración .conf de WireGuard para el cliente.
-    """
     config = f"""[Interface]
 PrivateKey = {private_key}
 Address = {ip}/32
@@ -122,9 +117,6 @@ PersistentKeepalive = 25
 
 
 def generate_qr_code(config_path):
-    """
-    Genera un código QR a partir del archivo de configuración .conf.
-    """
     try:
         with open(config_path, "r") as f:
             content = f.read()
@@ -142,9 +134,6 @@ def generate_qr_code(config_path):
 
 
 def delete_conf(client_name):
-    """
-    Elimina el archivo de configuración .conf de un cliente.
-    """
     path = os.path.join(WG_CONFIG_DIR, f"{client_name}.conf")
     if os.path.exists(path):
         os.remove(path)
@@ -153,9 +142,6 @@ def delete_conf(client_name):
 
 
 def schedule_expiration_check(bot):
-    """
-    Hilo que revisa periódicamente el vencimiento de las configuraciones.
-    """
     def check_loop():
         while True:
             try:
@@ -211,19 +197,13 @@ def schedule_expiration_check(bot):
 
 
 def enable_ip_forwarding():
-    """
-    Habilita el reenvío de IP y configura iptables para permitir acceso a Internet desde clientes WireGuard.
-    """
     try:
-        # Activar el reenvío temporalmente
         subprocess.run(["sysctl", "-w", "net.ipv4.ip_forward=1"], check=True)
 
-        # Hacerlo permanente (si aún no lo es)
         with open("/etc/sysctl.conf", "a") as sysctl_conf:
             sysctl_conf.write("\nnet.ipv4.ip_forward=1\n")
         subprocess.run(["sysctl", "-p"], check=True)
 
-        # Reglas de NAT con iptables si aún no existen
         result = subprocess.run(
             ["iptables", "-t", "nat", "-C", "POSTROUTING", "-o", "enX0", "-j", "MASQUERADE"],
             stdout=subprocess.DEVNULL,
@@ -232,7 +212,6 @@ def enable_ip_forwarding():
         if result.returncode != 0:
             subprocess.run(["iptables", "-t", "nat", "-A", "POSTROUTING", "-o", "enX0", "-j", "MASQUERADE"], check=True)
 
-        # Permitir tráfico entrante y saliente a través de wg0
         subprocess.run(["iptables", "-A", "FORWARD", "-i", "wg0", "-j", "ACCEPT"], check=True)
         subprocess.run(["iptables", "-A", "FORWARD", "-o", "wg0", "-j", "ACCEPT"], check=True)
 
@@ -242,9 +221,6 @@ def enable_ip_forwarding():
 
 
 def generate_wg_config(name, expiration_date, *args):
-    """
-    Genera configuración, claves, IP, agrega el peer, guarda en users y retorna el QR.
-    """
     users = load_json("users")
 
     if name in users:
@@ -270,8 +246,7 @@ def generate_wg_config(name, expiration_date, *args):
         if result.returncode != 0:
             raise RuntimeError(f"❌ Error al agregar peer: {result.stderr.strip()}")
 
-        # Confirmación: Verificamos que la IP fue asignada
-        output = subprocess.check_output(['wg', 'show', 'wg0', 'allowed-ips']).decode()
+        output = subprocess.check_output(['wg', 'show', 'wg0', 'dump']).decode()
         if f"{ip}/32" not in output:
             raise RuntimeError(f"🚫 El peer fue agregado pero su IP {ip}/32 no aparece activa en wg0.")
         

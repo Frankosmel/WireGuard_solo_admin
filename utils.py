@@ -262,10 +262,21 @@ def generate_wg_config(name, expiration_date, *args):
     config_path = generate_conf(name, private_key, ip)
 
     try:
-        subprocess.run(
+        result = subprocess.run(
             ["sudo", "wg", "set", "wg0", "peer", public_key, "allowed-ips", f"{ip}/32"],
-            check=True
+            capture_output=True,
+            text=True
         )
+        if result.returncode != 0:
+            raise RuntimeError(f"❌ Error al agregar peer: {result.stderr.strip()}")
+
+        # Confirmación: Verificamos que la IP fue asignada
+        output = subprocess.check_output(['wg', 'show', 'wg0', 'allowed-ips']).decode()
+        if f"{ip}/32" not in output:
+            raise RuntimeError(f"🚫 El peer fue agregado pero su IP {ip}/32 no aparece activa en wg0.")
+        
+        print(f"✅ Peer agregado correctamente con IP {ip}/32.")
+        
     except subprocess.CalledProcessError as e:
         print(f"❌ Error al agregar peer al servidor: {e}")
         raise RuntimeError(f"❌ Error al agregar el peer al servidor: {e}")

@@ -102,7 +102,7 @@ def generate_conf(client_name, private_key, ip):
     config = f"""[Interface]
 PrivateKey = {private_key}
 Address = {ip}/32
-DNS = 1.1.1.1
+DNS = 1.1.1.1, 8.8.8.8
 
 [Peer]
 PublicKey = {SERVER_PUBLIC_KEY}

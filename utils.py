@@ -8,6 +8,7 @@ from io import BytesIO
 from threading import Thread
 from time import sleep
 from datetime import datetime
+import shutil
 
 from config import (
     WG_CONFIG_DIR,
@@ -21,12 +22,14 @@ from config import (
 
 from storage import load_json, save_json
 
+WG_BIN = shutil.which("wg") or "wg"  # Ruta absoluta a wg si existe
+
 
 def generate_keypair():
     try:
-        private_key = subprocess.check_output(['wg', 'genkey']).decode().strip()
+        private_key = subprocess.check_output([WG_BIN, 'genkey']).decode().strip()
         public_key = subprocess.run(
-            ['wg', 'pubkey'],
+            [WG_BIN, 'pubkey'],
             input=private_key.encode(),
             capture_output=True,
             check=True
@@ -52,13 +55,9 @@ def get_used_ips():
 
 
 def get_active_wg_ips():
-    """
-    Devuelve el conjunto de IPs activas actualmente en wg0 usando 'wg show wg0 dump'.
-    """
     try:
-        output = subprocess.check_output(['wg', 'show', 'wg0', 'dump']).decode()
+        output = subprocess.check_output([WG_BIN, 'show', 'wg0', 'dump']).decode()
         lines = output.strip().splitlines()
-        # Saltar la primera línea si es encabezado, aunque usualmente no lo es
         ips = set()
         for line in lines:
             parts = line.split()
@@ -67,7 +66,7 @@ def get_active_wg_ips():
                 if allowed_ips != "(none)":
                     ips.add(allowed_ips.split(",")[0])
         return ips
-    except Exception as e:
+    except subprocess.CalledProcessError as e:
         print(f"⚠️ Error al obtener IPs activas de wg0: {e}")
         return set()
 
@@ -87,7 +86,7 @@ def get_next_available_ip():
 
 def peer_already_exists(public_key):
     try:
-        output = subprocess.check_output(['wg', 'show', 'wg0', 'dump']).decode()
+        output = subprocess.check_output([WG_BIN, 'show', 'wg0', 'dump']).decode()
         return public_key in output
     except Exception:
         return False
@@ -239,14 +238,14 @@ def generate_wg_config(name, expiration_date, *args):
 
     try:
         result = subprocess.run(
-            ["sudo", "wg", "set", "wg0", "peer", public_key, "allowed-ips", f"{ip}/32"],
+            ["sudo", WG_BIN, "set", "wg0", "peer", public_key, "allowed-ips", f"{ip}/32"],
             capture_output=True,
             text=True
         )
         if result.returncode != 0:
             raise RuntimeError(f"❌ Error al agregar peer: {result.stderr.strip()}")
 
-        output = subprocess.check_output(['wg', 'show', 'wg0', 'dump']).decode()
+        output = subprocess.check_output([WG_BIN, 'show', 'wg0', 'dump']).decode()
         if f"{ip}/32" not in output:
             raise RuntimeError(f"🚫 El peer fue agregado pero su IP {ip}/32 no aparece activa en wg0.")
         

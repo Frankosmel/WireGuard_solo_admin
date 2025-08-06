@@ -1,5 +1,5 @@
 # utils.py
-# ✅ Archivo corregido sin simplificaciones
+# ✅ Archivo completo y corregido sin simplificaciones
 
 import subprocess
 import os
@@ -247,13 +247,9 @@ def generate_wg_config(name, expiration_date, *args):
         if result.returncode != 0:
             raise RuntimeError(f"❌ Error al agregar peer: {result.stderr.strip()}")
 
-        # Verificar si IP fue aplicada
-        try:
-            dump_result = subprocess.run([WG_BIN, "show", "wg0", "dump"], capture_output=True, text=True, check=True)
-            if f"{ip}/32" not in dump_result.stdout:
-                raise RuntimeError(f"🚫 El peer fue agregado pero su IP {ip}/32 no aparece activa en wg0.")
-        except subprocess.CalledProcessError as e:
-            raise RuntimeError(f"❌ Error al verificar el estado de wg0: {e.stderr.strip()}")
+        dump_result = subprocess.run([WG_BIN, "show", "wg0", "dump"], capture_output=True, text=True, check=True)
+        if f"{ip}/32" not in dump_result.stdout:
+            raise RuntimeError(f"🚫 El peer fue agregado pero su IP {ip}/32 no aparece activa en wg0.")
 
         print(f"✅ Peer agregado correctamente con IP {ip}/32.")
 
@@ -283,5 +279,32 @@ def generate_wg_config(name, expiration_date, *args):
     }
 
 
-# Ejecutar al cargar el archivo para asegurar la configuración de red
+def fix_incomplete_peers():
+    try:
+        users = load_json("users")
+        wg_dump = subprocess.run([WG_BIN, "show", "wg0", "dump"], capture_output=True, text=True, check=True).stdout
+
+        for name, data in users.items():
+            pubkey = data.get("public_key")
+            ip = data.get("ip")
+            if not pubkey or not ip:
+                continue
+
+            if f"{ip}/32" not in wg_dump:
+                print(f"🔄 Reparando peer sin IP: {name} ({ip})...")
+                result = subprocess.run(
+                    ["sudo", WG_BIN, "set", "wg0", "peer", pubkey, "allowed-ips", f"{ip}/32"],
+                    capture_output=True,
+                    text=True
+                )
+                if result.returncode == 0:
+                    print(f"✅ IP {ip}/32 reconfigurada correctamente para {name}.")
+                else:
+                    print(f"❌ Error al reconfigurar IP de {name}: {result.stderr.strip()}")
+    except Exception as e:
+        print(f"⚠️ Error en fix_incomplete_peers(): {e}")
+
+
+# Ejecutar automáticamente al cargar el archivo
 enable_ip_forwarding()
+fix_incomplete_peers()

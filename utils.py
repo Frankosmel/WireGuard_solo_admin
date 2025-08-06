@@ -1,4 +1,5 @@
 # utils.py
+# ✅ Archivo corregido sin simplificaciones
 
 import subprocess
 import os
@@ -22,7 +23,7 @@ from config import (
 
 from storage import load_json, save_json
 
-WG_BIN = shutil.which("wg") or "wg"  # Ruta absoluta a wg si existe
+WG_BIN = shutil.which("wg") or "wg"
 
 
 def generate_keypair():
@@ -56,7 +57,8 @@ def get_used_ips():
 
 def get_active_wg_ips():
     try:
-        output = subprocess.check_output([WG_BIN, 'show', 'wg0', 'dump']).decode()
+        result = subprocess.run([WG_BIN, 'show', 'wg0', 'dump'], capture_output=True, text=True, check=True)
+        output = result.stdout
         lines = output.strip().splitlines()
         ips = set()
         for line in lines:
@@ -67,7 +69,7 @@ def get_active_wg_ips():
                     ips.add(allowed_ips.split(",")[0])
         return ips
     except subprocess.CalledProcessError as e:
-        print(f"⚠️ Error al obtener IPs activas de wg0: {e}")
+        print(f"⚠️ Error al obtener IPs activas de wg0: {e.stderr.strip()}")
         return set()
 
 
@@ -245,13 +247,17 @@ def generate_wg_config(name, expiration_date, *args):
         if result.returncode != 0:
             raise RuntimeError(f"❌ Error al agregar peer: {result.stderr.strip()}")
 
-        output = subprocess.check_output([WG_BIN, 'show', 'wg0', 'dump']).decode()
-        if f"{ip}/32" not in output:
-            raise RuntimeError(f"🚫 El peer fue agregado pero su IP {ip}/32 no aparece activa en wg0.")
-        
+        # Verificar si IP fue aplicada
+        try:
+            dump_result = subprocess.run([WG_BIN, "show", "wg0", "dump"], capture_output=True, text=True, check=True)
+            if f"{ip}/32" not in dump_result.stdout:
+                raise RuntimeError(f"🚫 El peer fue agregado pero su IP {ip}/32 no aparece activa en wg0.")
+        except subprocess.CalledProcessError as e:
+            raise RuntimeError(f"❌ Error al verificar el estado de wg0: {e.stderr.strip()}")
+
         print(f"✅ Peer agregado correctamente con IP {ip}/32.")
-        
-    except subprocess.CalledProcessError as e:
+
+    except Exception as e:
         print(f"❌ Error al agregar peer al servidor: {e}")
         raise RuntimeError(f"❌ Error al agregar el peer al servidor: {e}")
 

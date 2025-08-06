@@ -16,7 +16,7 @@ SERVER_PUBLIC_KEY = "QLtoHUIcW2s/ZZ3tgKZ3wSidEy778prOGWIGo2cXhHw="
 LISTEN_PORT = 51820
 
 # Carpeta donde se almacenan los archivos .conf generados
-WG_CONFIG_DIR = "configs"
+WG_CONFIG_DIR = "/etc/wireguard/configs"
 
 # Archivo JSON con las configuraciones de clientes registradas
 CLIENTES_FILE = "clientes.json"
@@ -44,6 +44,12 @@ PLANES_PRECIOS = {
 
 # Métodos de pago disponibles (no usados ahora, pero listos para futuro)
 METODOS_PAGO = ["CUP", "Saldo Móvil"]
+
+# Rango de IPs permitido para los clientes (usado en utils.py)
+WG_NETWORK_RANGE = "0.0.0.0/0"
+
+# Dominio o IP + puerto para el endpoint que aparece en el .conf
+SERVER_ENDPOINT = f"{SERVER_PUBLIC_IP}"
 
 # Grupo o canal para recibir logs de actividad (puedes activarlo luego)
 GRUPO_LOGS = None

@@ -20,7 +20,7 @@ from storage import load_users, save_users
 
 def get_used_ips():
     """
-    Obtiene las IPs ya asignadas a clientes existentes.
+    Obtiene las IPs ya asignadas actualmente a clientes registrados.
     """
     users = load_users()
     return {data['ip'] for data in users.values()}
@@ -28,36 +28,47 @@ def get_used_ips():
 
 def get_next_ip():
     """
-    Busca la próxima IP libre dentro del rango 10.9.0.2 - 10.9.0.254.
+    Busca la próxima IP disponible dentro del rango 10.9.0.2 - 10.9.0.254.
     """
     used_ips = get_used_ips()
     base_ip = "10.9.0."
     for i in range(2, 255):
-        candidate = f"{base_ip}{i}"
-        if candidate not in used_ips:
-            return candidate
-    raise RuntimeError("🚫 No hay IPs disponibles.")
+        ip = f"{base_ip}{i}"
+        if ip not in used_ips:
+            return ip
+    raise RuntimeError("🚫 No hay IPs disponibles. Todas las direcciones están en uso.")
 
 
 def generate_keys():
     """
-    Genera un par de claves privadas/públicas con wg.
+    Genera claves privada y pública para WireGuard.
     """
-    private_key = subprocess.check_output("wg genkey", shell=True).decode().strip()
-    public_key = subprocess.check_output(f"echo {private_key} | wg pubkey", shell=True).decode().strip()
-    return private_key, public_key
+    try:
+        private_key = subprocess.check_output(['wg', 'genkey']).decode().strip()
+        public_key = subprocess.run(
+            ['wg', 'pubkey'],
+            input=private_key.encode(),
+            capture_output=True,
+            check=True
+        ).stdout.decode().strip()
+
+        if not private_key or not public_key:
+            raise ValueError("Error al generar claves WireGuard.")
+        return private_key, public_key
+
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(f"❌ Error generando claves: {e}")
 
 
 def generate_wg_config(client_name: str, vencimiento: str) -> dict:
     """
-    Genera el archivo de configuración .conf y devuelve info completa del cliente.
+    Genera el archivo .conf de un cliente y devuelve su info.
     """
     try:
         ip = get_next_ip()
         private_key, public_key = generate_keys()
 
-        config_text = f"""
-[Interface]
+        config_text = f"""[Interface]
 PrivateKey = {private_key}
 Address = {ip}/32
 DNS = 1.1.1.1
@@ -67,10 +78,11 @@ PublicKey = {SERVER_PUBLIC_KEY}
 Endpoint = {SERVER_ENDPOINT}:{WG_PORT}
 AllowedIPs = {WG_NETWORK_RANGE}
 PersistentKeepalive = 25
-""".strip()
+"""
 
         os.makedirs(WG_CONFIG_DIR, exist_ok=True)
         conf_path = os.path.join(WG_CONFIG_DIR, f"{client_name}.conf")
+
         with open(conf_path, "w") as f:
             f.write(config_text)
 
@@ -82,38 +94,41 @@ PersistentKeepalive = 25
         }
 
     except Exception as e:
-        raise RuntimeError(f"No se pudo generar la configuración: {str(e)}")
+        raise RuntimeError(f"⚠️ No se pudo generar la configuración: {e}")
 
 
 def generate_qr_code(conf_path: str):
     """
-    Genera un código QR a partir del archivo .conf existente.
+    Genera y guarda un QR desde un archivo .conf.
     """
-    with open(conf_path, "r") as f:
-        config_text = f.read()
+    try:
+        with open(conf_path, "r") as f:
+            config_text = f.read()
 
-    qr = qrcode.make(config_text)
-    qr_path = conf_path.replace(".conf", "_qr.png")
-    qr.save(qr_path)
-    return qr_path
+        qr = qrcode.make(config_text)
+        qr_path = conf_path.replace(".conf", "_qr.png")
+        qr.save(qr_path)
+        return qr_path
+    except Exception as e:
+        raise RuntimeError(f"❌ Error al generar el QR: {e}")
 
 
 def delete_conf(client_name: str):
     """
-    Elimina el archivo .conf asociado a un cliente.
+    Elimina el archivo .conf y su QR.
     """
-    path = os.path.join(WG_CONFIG_DIR, f"{client_name}.conf")
-    qr_path = os.path.join(WG_CONFIG_DIR, f"{client_name}_qr.png")
+    conf_path = os.path.join(WG_CONFIG_DIR, f"{client_name}.conf")
+    qr_path = conf_path.replace(".conf", "_qr.png")
 
-    if os.path.exists(path):
-        os.remove(path)
+    if os.path.exists(conf_path):
+        os.remove(conf_path)
     if os.path.exists(qr_path):
         os.remove(qr_path)
 
 
 def guardar_archivo(ruta: str, contenido: str):
     """
-    Guarda el contenido en una ruta de archivo específica.
+    Guarda texto en una ruta específica.
     """
     with open(ruta, "w") as f:
         f.write(contenido)
@@ -121,29 +136,30 @@ def guardar_archivo(ruta: str, contenido: str):
 
 def schedule_expiration_check(bot):
     """
-    Verifica cada 60 minutos si alguna configuración venció y la elimina.
+    Revisa cada 60 minutos si hay configuraciones vencidas.
+    Si lo están, las elimina y notifica al administrador.
     """
     def check_expired():
         users = load_users()
         now = datetime.utcnow()
-        updated = {}
+        activos = {}
 
-        for name, data in users.items():
-            vencimiento = datetime.strptime(data["vencimiento"], "%Y-%m-%d %H:%M:%S")
+        for nombre, datos in users.items():
+            vencimiento = datetime.strptime(datos["vencimiento"], "%Y-%m-%d %H:%M:%S")
             if vencimiento > now:
-                updated[name] = data
+                activos[nombre] = datos
             else:
-                delete_conf(name)
+                delete_conf(nombre)
                 try:
                     bot.send_message(
                         ADMIN_ID,
-                        f"⏰ Configuración vencida y eliminada: <b>{name}</b>\n🧾 IP: {data['ip']}",
+                        f"⛔️ Configuración vencida: <b>{nombre}</b>\n🧾 IP: {datos['ip']}",
                         parse_mode="HTML"
                     )
                 except:
                     pass
 
-        save_users(updated)
-        Timer(3600, check_expired).start()  # Revisa cada 60 minutos
+        save_users(activos)
+        Timer(3600, check_expired).start()  # Repetir cada 60 minutos
 
     check_expired()

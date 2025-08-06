@@ -15,6 +15,9 @@ SERVER_PUBLIC_KEY = "QLtoHUIcW2s/ZZ3tgKZ3wSidEy778prOGWIGo2cXhHw="
 # Puerto de escucha del servidor WireGuard (por defecto 51820)
 LISTEN_PORT = 51820
 
+# Alias para compatibilidad con scripts que usan WG_PORT
+WG_PORT = LISTEN_PORT  # ✅ Línea agregada para evitar error en utils.py
+
 # Carpeta donde se almacenan los archivos .conf generados
 WG_CONFIG_DIR = "/etc/wireguard/configs"
 

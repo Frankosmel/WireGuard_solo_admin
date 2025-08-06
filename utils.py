@@ -4,10 +4,19 @@ import os
 import json
 import subprocess
 import qrcode
-from config import WG_CONFIG_DIR, SERVER_PUBLIC_KEY, SERVER_ENDPOINT, WG_PORT, WG_NETWORK_RANGE
-from storage import load_users, save_users
 from datetime import datetime
 from threading import Timer
+
+from config import (
+    WG_CONFIG_DIR,
+    SERVER_PUBLIC_KEY,
+    SERVER_ENDPOINT,
+    WG_PORT,
+    WG_NETWORK_RANGE,
+    ADMIN_ID
+)
+from storage import load_users, save_users
+
 
 def get_used_ips():
     """
@@ -15,6 +24,7 @@ def get_used_ips():
     """
     users = load_users()
     return {data['ip'] for data in users.values()}
+
 
 def get_next_ip():
     """
@@ -28,6 +38,7 @@ def get_next_ip():
             return candidate
     raise RuntimeError("🚫 No hay IPs disponibles.")
 
+
 def generate_keys():
     """
     Genera un par de claves privadas/públicas con wg.
@@ -35,6 +46,7 @@ def generate_keys():
     private_key = subprocess.check_output("wg genkey", shell=True).decode().strip()
     public_key = subprocess.check_output(f"echo {private_key} | wg pubkey", shell=True).decode().strip()
     return private_key, public_key
+
 
 def generate_wg_config(client_name: str, vencimiento: str) -> dict:
     """
@@ -72,6 +84,7 @@ PersistentKeepalive = 25
     except Exception as e:
         raise RuntimeError(f"No se pudo generar la configuración: {str(e)}")
 
+
 def generate_qr_code(conf_path: str):
     """
     Genera un código QR a partir del archivo .conf existente.
@@ -84,6 +97,7 @@ def generate_qr_code(conf_path: str):
     qr.save(qr_path)
     return qr_path
 
+
 def delete_conf(client_name: str):
     """
     Elimina el archivo .conf asociado a un cliente.
@@ -95,6 +109,15 @@ def delete_conf(client_name: str):
         os.remove(path)
     if os.path.exists(qr_path):
         os.remove(qr_path)
+
+
+def guardar_archivo(ruta: str, contenido: str):
+    """
+    Guarda el contenido en una ruta de archivo específica.
+    """
+    with open(ruta, "w") as f:
+        f.write(contenido)
+
 
 def schedule_expiration_check(bot):
     """

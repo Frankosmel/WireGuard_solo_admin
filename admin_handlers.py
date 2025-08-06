@@ -4,7 +4,8 @@ from telebot import TeleBot
 from telebot.types import ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from config import ADMIN_ID, PLANES, PLANES_PRECIOS
 from storage import load_users, save_users
-from utils import generate_wg_config, generate_qr_code, delete_conf
+from utils import generate_qr_code, delete_conf
+from generator import generar_configuracion
 from datetime import datetime, timedelta
 import os
 
@@ -75,13 +76,16 @@ def register_admin_handlers(bot: TeleBot):
         vencimiento = datetime.utcnow() + timedelta(days=dias, hours=horas)
 
         try:
-            result = generate_wg_config(client_name, vencimiento.strftime('%Y-%m-%d %H:%M:%S'))
-            conf_path = result["conf_path"]
+            result = generar_configuracion(client_name)
+
+            if result["status"] == "error":
+                return bot.send_message(message.chat.id, f"⚠️ Error: {result['error']}")
+
             client_data = {
                 "private_key": result["private_key"],
                 "public_key": result["public_key"],
                 "ip": result["ip"],
-                "conf_path": conf_path,
+                "conf_path": result["conf_path"],
                 "vencimiento": vencimiento.strftime('%Y-%m-%d %H:%M:%S'),
                 "plan": plan
             }
@@ -97,16 +101,12 @@ def register_admin_handlers(bot: TeleBot):
                 reply_markup=ReplyKeyboardRemove()
             )
 
-            with open(conf_path, "rb") as f:
+            with open(result["conf_path"], "rb") as f:
                 bot.send_document(message.chat.id, f)
 
-            qr_img = generate_qr_code(conf_path)
+            qr_img = generate_qr_code(result["conf_path"])
             bot.send_photo(message.chat.id, qr_img, caption="📲 Escanea este código QR con WireGuard")
 
-        except ValueError as e:
-            bot.send_message(message.chat.id, f"⚠️ Error: {str(e)}")
-        except RuntimeError as e:
-            bot.send_message(message.chat.id, f"❌ {str(e)}")
         except Exception as e:
             bot.send_message(message.chat.id, f"🚫 Error inesperado: {str(e)}")
 
@@ -170,12 +170,12 @@ def register_admin_handlers(bot: TeleBot):
 
     @bot.message_handler(func=lambda m: is_admin(m.from_user.id) and m.text == "📁 Respaldar datos (.json)")
     def enviar_respaldo(message):
-        path = os.path.join("data", "users.json")
+        path = "clientes.json"
         if not os.path.exists(path):
             return bot.send_message(message.chat.id, "⚠️ Archivo de respaldo no encontrado.")
 
         with open(path, "rb") as f:
-            bot.send_document(message.chat.id, f, caption="📁 Respaldo de usuarios")
+            bot.send_document(message.chat.id, f, caption="📁 Respaldo de clientes")
 
     @bot.message_handler(func=lambda m: is_admin(m.from_user.id) and m.text == "🔙 Salir")
     def salir_panel(message):
@@ -195,4 +195,4 @@ def show_admin_menu(bot: TeleBot, chat_id: int):
         "🔧 <b>Panel de Administración</b>\n\nElige una opción para gestionar WireGuard:",
         reply_markup=kb,
         parse_mode="HTML"
-            )
+    )
